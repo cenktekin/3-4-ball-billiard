@@ -1,4 +1,4 @@
-# 🎱 Carom & 4-Ball Billiards
+# 🎱 Carom Billiards
 
 Client-side carom billiards oyunu — tarayıcıda doğrudan oynanır, kurulum gerektirmez.
 
@@ -6,8 +6,9 @@ Client-side carom billiards oyunu — tarayıcıda doğrudan oynanır, kurulum g
 
 | Mod | Açıklama |
 |-----|----------|
-| **3-Ball Carom** | Klasik carom — 3 top, buffer hedefi yok |
-| **4-Ball Carom** | 4 top ile puan toplama (kırmızı + sarı) |
+| **3-Ball** | 3 top ile klasik sayı oyunu |
+| **3-Cushion (3 Bant)** | Sayı için en az 3 bant + hedef toplara temas |
+| **4-Ball** | 4 top ile puan toplama |
 
 ## ✨ Özellikler
 
@@ -59,7 +60,7 @@ Tarayıcıda `http://localhost:8000` adresine gidin.
     ├── table.js        # Masa çizimi
     ├── ui.js           # Arayüz bileşenleri
     ├── game.js         # Oyun mantığı
-    ├── mode3ball.js    # 3-ball modu
+    ├── mode3ball.js    # 3-ball + 3-bant modu
     ├── mode4ball.js    # 4-ball modu
     ├── ai.js           # Yapay zeka
     └── main.js         # Başlatma
