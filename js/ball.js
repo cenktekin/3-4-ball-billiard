@@ -70,10 +70,21 @@ const Ball = (() => {
         grad.addColorStop(0.7, this.color);
         grad.addColorStop(1, this.darken(this.color, 30));
 
+        const sBlur = 4 + Math.min(speed * 0.3, 8);
+        const sOff = 1 + Math.min(speed * 0.1, 2);
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = sBlur;
+        ctx.shadowOffsetX = sOff;
+        ctx.shadowOffsetY = sOff + 1;
+
         ctx.beginPath();
         ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
         ctx.fillStyle = grad;
         ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
       } else {
         const grad = ctx.createRadialGradient(
           this.x - r * 0.3, this.y - r * 0.3, r * 0.1,
@@ -83,23 +94,21 @@ const Ball = (() => {
         grad.addColorStop(0.3, this.color);
         grad.addColorStop(1, this.darken(this.color, 40));
 
+        const sBlur2 = 4 + Math.min(speed * 0.3, 8);
+        const sOff2 = 1 + Math.min(speed * 0.1, 2);
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = sBlur2;
+        ctx.shadowOffsetX = sOff2;
+        ctx.shadowOffsetY = sOff2 + 1;
+
         ctx.beginPath();
         ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
         ctx.fillStyle = grad;
         ctx.fill();
-      }
 
-      if (this.number) {
-        const nr = r * 0.45;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, nr, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-        ctx.fillStyle = '#222';
-        ctx.font = `bold ${Math.round(r * 0.6)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(this.number, this.x, this.y + 0.5);
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
       }
 
       ctx.beginPath();

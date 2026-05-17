@@ -307,6 +307,17 @@
           return;
         }
 
+        const themeBtn = UI.getThemeButton();
+        if (mouseX >= themeBtn.x && mouseX <= themeBtn.x + themeBtn.w &&
+            mouseY >= themeBtn.y && mouseY <= themeBtn.y + themeBtn.h) {
+          const themes = Table.getThemes();
+          const current = Table.getTheme();
+          const idx = themes.findIndex(t => t.key === current);
+          const next = themes[(idx + 1) % themes.length].key;
+          Table.setTheme(next);
+          return;
+        }
+
         const buttons = UI.getMenuButtons();
         for (const btn of buttons) {
           if (mouseX >= btn.x && mouseX <= btn.x + btn.w &&

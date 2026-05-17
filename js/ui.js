@@ -678,6 +678,16 @@ const UI = (() => {
       ctx.font = 'bold 14px sans-serif';
       ctx.fillText('KARIYER STATS', canvasW / 2, STATS_BTN.y + STATS_BTN.h / 2 + 5);
 
+      const themeBtn = getThemeButton();
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(themeBtn.x, themeBtn.y, themeBtn.w, themeBtn.h);
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(themeBtn.x, themeBtn.y, themeBtn.w, themeBtn.h);
+      ctx.fillStyle = '#aaa';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('MASA: ' + Table.getThemeName(), canvasW / 2, themeBtn.y + themeBtn.h / 2 + 4);
+
       ctx.fillStyle = '#888';
       ctx.font = '12px sans-serif';
       ctx.fillText('Aim: Mouse  |  Power: Hold Click  |  Spin: Right-Click Drag  |  Chalk: SPACE', canvasW / 2, canvasH - 40);
@@ -765,8 +775,10 @@ const UI = (() => {
   }
 
   const STATS_BTN = { x: 360, y: 405, w: 180, h: 30 };
+  const THEME_BTN = { x: 360, y: 440, w: 180, h: 28 };
 
   function getStatsButton() { return STATS_BTN; }
+  function getThemeButton() { return THEME_BTN; }
 
   function drawStatsMenu(ctx) {
     const canvasW = 900, canvasH = 580;
