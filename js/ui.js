@@ -205,6 +205,7 @@ const UI = (() => {
       tableBounds, balls, 300
     );
     const pts = result.cuePoints;
+    const hitPts = result.hitPoints;
     if (!pts || pts.length < 2) return;
 
     ctx.save();
@@ -230,16 +231,6 @@ const UI = (() => {
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    for (let i = 0; i < pts.length; i += 4) {
-      const p = pts[i];
-      const alpha = 0.3 + (i / pts.length) * 0.5;
-      const size = 2 + (i / pts.length) * 2;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0,230,118,${alpha})`;
-      ctx.fill();
-    }
-
     if (hitIdx > 0 && hitIdx < pts.length) {
       const hp = pts[hitIdx];
       ctx.beginPath();
@@ -247,14 +238,53 @@ const UI = (() => {
       ctx.strokeStyle = '#FFD700';
       ctx.lineWidth = 2;
       ctx.stroke();
+
+      if (hitPts && hitPts.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(hp.x, hp.y);
+        let lastHitPt = hp;
+        for (let i = 0; i < hitPts.length; i++) {
+          ctx.lineTo(hitPts[i].x, hitPts[i].y);
+          lastHitPt = hitPts[i];
+        }
+
+        const hitGrad = ctx.createLinearGradient(hp.x, hp.y, lastHitPt.x, lastHitPt.y);
+        hitGrad.addColorStop(0, 'rgba(255,140,0,0.9)');
+        hitGrad.addColorStop(1, 'rgba(255,80,0,0.4)');
+        ctx.strokeStyle = hitGrad;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255,140,0,0.5)';
+        ctx.shadowBlur = 5;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        for (let i = 0; i < hitPts.length; i += 4) {
+          const p = hitPts[i];
+          const alpha = 0.3 + (i / hitPts.length) * 0.5;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2 + (i / hitPts.length) * 2, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,140,0,${alpha})`;
+          ctx.fill();
+        }
+      }
+
       ctx.beginPath();
-      ctx.arc(hp.x, hp.y, 10, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,215,0,0.4)';
+      ctx.arc(hp.x, hp.y, 12, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,215,0,0.3)';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
 
     for (const pt of pts) {
+      if (pt.type === 'cushion') {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(100,180,255,0.7)';
+        ctx.fill();
+      }
+    }
+
+    for (const pt of hitPts || []) {
       if (pt.type === 'cushion') {
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
