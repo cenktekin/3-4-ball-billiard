@@ -46,6 +46,14 @@ const AI = (() => {
 
       let cushionFirst = mode === '3cushion' && canDoCushionFirst(hit) ? 10 : 0;
 
+      if (mode === '3cushion' && !cushionFirst) {
+        const cfShot = findCushionFirstShot(cue, targets);
+        if (cfShot && cfShot.score > bestScore) {
+          bestScore = cfShot.score;
+          bestShot = cfShot;
+        }
+      }
+
       const distPenalty = Math.min(hit.dist / 800, 1) * 5;
       const totalScore = baseScore + cushionFirst - distPenalty;
 
@@ -262,6 +270,114 @@ const AI = (() => {
       hy < bounds.y + margin ||
       hy > bounds.y + bounds.height - margin
     );
+  }
+
+  // 3-cushion: find shot that can reach a cushion first, then target ball, then another cushion
+  function findCushionFirstShot(cue, targets) {
+    const bounds = Table.getBounds();
+    let best = null;
+    let bestScore = -Infinity;
+    const step = 0.015;
+
+    for (let angle = 0; angle < Math.PI * 2; angle += step) {
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+
+      let cushionHit = null;
+      let minCushT = Infinity;
+
+      if (dx > 0) {
+        const t = (bounds.x + bounds.width - cue.x) / dx;
+        if (t > 0.01 && t < minCushT) {
+          minCushT = t;
+          cushionHit = { x: bounds.x + bounds.width, y: cue.y + dy * t, nx: -1, ny: 0, t };
+        }
+      }
+      if (dx < 0) {
+        const t = (bounds.x - cue.x) / dx;
+        if (t > 0.01 && t < minCushT) {
+          minCushT = t;
+          cushionHit = { x: bounds.x, y: cue.y + dy * t, nx: 1, ny: 0, t };
+        }
+      }
+      if (dy > 0) {
+        const t = (bounds.y + bounds.height - cue.y) / dy;
+        if (t > 0.01 && t < minCushT) {
+          minCushT = t;
+          cushionHit = { x: cue.x + dx * t, y: bounds.y + bounds.height, nx: 0, ny: -1, t };
+        }
+      }
+      if (dy < 0) {
+        const t = (bounds.y - cue.y) / dy;
+        if (t > 0.01 && t < minCushT) {
+          minCushT = t;
+          cushionHit = { x: cue.x + dx * t, y: bounds.y, nx: 0, ny: 1, t };
+        }
+      }
+
+      if (!cushionHit || minCushT > 300) continue;
+
+      const reflectAngle = (cushionHit.nx !== 0) ? Math.PI - angle : -angle;
+
+      const rdx = Math.cos(reflectAngle);
+      const rdy = Math.sin(reflectAngle);
+      let hitBall = null;
+      let minBallT = Infinity;
+
+      for (const ball of targets) {
+        const ocx = ball.x - cushionHit.x;
+        const ocy = ball.y - cushionHit.y;
+        const rSum = 24;
+        const a = rdx * rdx + rdy * rdy;
+        const b = -2 * (ocx * rdx + ocy * rdy);
+        const c = ocx * ocx + ocy * ocy - rSum * rSum;
+        const disc = b * b - 4 * a * c;
+
+        if (disc >= 0) {
+          const t = (-b - Math.sqrt(disc)) / (2 * a);
+          if (t > 0.01 && t < minBallT) {
+            minBallT = t;
+            hitBall = ball;
+          }
+        }
+      }
+
+      if (!hitBall || minBallT > 200) continue;
+
+      const hitPoint = { x: cushionHit.x + rdx * minBallT, y: cushionHit.y + rdy * minBallT };
+      const totalDist = minCushT + minBallT;
+      let score = 100 - totalDist * 0.05;
+
+      const reachableBalls = targets.filter(b => {
+        if (b === hitBall) return true;
+        return Math.sqrt((b.x - hitPoint.x) ** 2 + (b.y - hitPoint.y) ** 2) < 150;
+      });
+      score += reachableBalls.length * 15;
+
+      const midY = (bounds.y + bounds.height / 2);
+      const midX = (bounds.x + bounds.width / 2);
+      if (cushionHit.nx !== 0) {
+        if (Math.abs(cushionHit.y - midY) < bounds.height * 0.35) score += 10;
+      } else {
+        if (Math.abs(cushionHit.x - midX) < bounds.width * 0.35) score += 10;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        const spin = calcSpin(cue, { ball: hitBall, point: hitPoint, normal: { x: rdx, y: rdy } }, targets, '3cushion');
+        best = {
+          angle: angle,
+          power: Math.min(25, 8 + minBallT * 0.06),
+          firstBall: hitBall,
+          spinX: spin.spinX,
+          spinY: spin.spinY,
+          cushionFirst: true,
+          cushionHit: cushionHit
+        };
+      }
+    }
+
+    return best;
   }
 
   function calcPower(cue, target, hitPoint, diff) {

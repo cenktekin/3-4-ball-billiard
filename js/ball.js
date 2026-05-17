@@ -35,16 +35,18 @@ const Ball = (() => {
       const r = this.radius;
       const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
 
-      if (speed > 1) {
-        this.trailTimer = Math.min(this.trailTimer + 0.3, 1);
+      if (speed > 0.5) {
+        this.trailTimer = Math.min(this.trailTimer + 0.4, 1);
       } else {
-        this.trailTimer = Math.max(this.trailTimer - 0.05, 0);
+        this.trailTimer = Math.max(this.trailTimer - 0.08, 0);
       }
-      if (this.trailTimer > 0.1) {
-        const trailAlpha = this.trailTimer * 0.15;
+      if (this.trailTimer > 0.15) {
+        const trailAlpha = this.trailTimer * 0.2;
+        const trailR = r * (0.5 + this.trailTimer * 0.3);
         ctx.beginPath();
-        ctx.arc(this.x, this.y, r + 1, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${trailAlpha})`;
+        ctx.arc(this.x, this.y, trailR, 0, Math.PI * 2);
+        const trailColor = this.getTrailColor(speed);
+        ctx.fillStyle = `rgba(${trailColor},${trailAlpha / 100})`;
         ctx.fill();
       }
 
@@ -119,6 +121,17 @@ const Ball = (() => {
       const g = Math.max(((num >> 8) & 0x00FF) - amount, 0);
       const b = Math.max((num & 0x0000FF) - amount, 0);
       return '#' + (r << 16 | g << 8 | b).toString(16).padStart(6, '0');
+    }
+
+    getTrailColor(speed) {
+      const normalizedSpeed = Math.min(speed / 15, 1);
+      const baseColor = this.id === 'white' || this.id === 'cue' || this.id === 'yellow'
+        ? '200,220,255'
+        : this.id === 'red' || this.id === 'red1' || this.id === 'red2'
+          ? '255,180,180'
+          : '255,255,255';
+      const alpha = Math.round(normalizedSpeed * 60 + 40);
+      return `${baseColor},${alpha}`;
     }
 
     stop() {

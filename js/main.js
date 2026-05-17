@@ -10,6 +10,8 @@
   let menuPhase = 'modeselect';
   let pendingMode = null;
   let aiShotDelay = 0;
+  let screenShake = 0;
+  let impactFlash = 0;
 
   function init() {
     canvas = document.getElementById('gameCanvas');
@@ -59,6 +61,7 @@
         const ready = AI.update(dt * 16.67);
         if (ready) {
           Audio.playShot(gameState.shotPower);
+          triggerImpactFlash(gameState.shotPower);
           gameState.startShot();
           Physics.applyShot(gameState.cueBall, gameState.aimAngle, gameState.shotPower);
           gameState.shotPower = 0;
@@ -68,7 +71,11 @@
       }
     }
 
+    if (screenShake > 0) screenShake = Math.max(0, screenShake - dt * 16.67 * 0.008);
+    if (impactFlash > 0) impactFlash = Math.max(0, impactFlash - dt * 16.67 * 0.006);
+
     UI.updateChalk(dt * 16.67);
+    if (UI.updateConfetti) UI.updateConfetti(dt);
     if (messageTimer > 0) messageTimer -= dt * 16.67;
 
     render();
@@ -106,6 +113,7 @@
           if (gameState.trySoundPair(balls[i].id, balls[j].id)) {
             const vel = Math.sqrt(balls[i].vx * balls[i].vx + balls[i].vy * balls[i].vy);
             Audio.playBallHit(vel);
+            triggerCollisionShake(vel);
           }
           if (balls[i].id === cueBallId) {
             gameState.recordBallHit(balls[j].id);
@@ -480,6 +488,7 @@
 
   function fireShot() {
     Audio.playShot(gameState.shotPower);
+    triggerImpactFlash(gameState.shotPower);
     gameState.isCharging = false;
     gameState.startShot();
     Physics.applyShot(
@@ -490,8 +499,31 @@
     gameState.phase = 'moving';
   }
 
+  function triggerImpactFlash(power) {
+    const intensity = Math.min(power / Physics.MAX_POWER, 1);
+    impactFlash = intensity * 0.4;
+    if (power > 20) screenShake = Math.min(intensity * 4, 3);
+  }
+
+  function triggerCollisionShake(velocity) {
+    const intensity = Math.min((velocity || 1) / 15, 1);
+    screenShake = Math.max(screenShake, intensity * 1.5);
+  }
+
   function render() {
+    ctx.save();
+    if (screenShake > 0) {
+      const sx = (Math.random() - 0.5) * screenShake;
+      const sy = (Math.random() - 0.5) * screenShake;
+      ctx.translate(sx, sy);
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (impactFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${impactFlash})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     if (gameState.phase === 'menu') {
       if (menuPhase === 'stats') {
@@ -590,7 +622,10 @@
 
     if (gameState.phase === 'gameover') {
       UI.drawGameOver(ctx, gameState.won, gameState.score, gameState);
+      UI.drawConfetti(ctx);
     }
+
+    ctx.restore();
   }
 
   window.addEventListener('DOMContentLoaded', init);

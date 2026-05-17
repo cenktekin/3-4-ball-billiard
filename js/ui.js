@@ -4,6 +4,56 @@ const UI = (() => {
   let chalkTimer = 0;
   let trajectoryMode = true;
 
+  const confettiParticles = [];
+  let confettiActive = false;
+
+  function triggerConfetti() {
+    confettiActive = true;
+    confettiParticles.length = 0;
+    const colors = ['#FFD700', '#4CAF50', '#FF5722', '#2196F3', '#E91E63', '#9C27B0'];
+    for (let i = 0; i < 80; i++) {
+      confettiParticles.push({
+        x: 450 + (Math.random() - 0.5) * 100,
+        y: 290 + (Math.random() - 0.5) * 60,
+        vx: (Math.random() - 0.5) * 12,
+        vy: -Math.random() * 10 - 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: Math.random() * 6 + 3,
+        rot: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.3,
+        life: 1
+      });
+    }
+  }
+
+  function updateConfetti(dt) {
+    if (!confettiActive) return;
+    let anyAlive = false;
+    for (const p of confettiParticles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.15;
+      p.rot += p.rotSpeed;
+      p.life -= 0.008;
+      if (p.life > 0) anyAlive = true;
+    }
+    if (!anyAlive) confettiActive = false;
+  }
+
+  function drawConfetti(ctx) {
+    if (!confettiActive) return;
+    for (const p of confettiParticles) {
+      if (p.life <= 0) continue;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.life;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    }
+  }
+
   function isTrajectoryMode() { return trajectoryMode; }
   function toggleTrajectoryMode() { trajectoryMode = !trajectoryMode; }
 
@@ -530,6 +580,8 @@ const UI = (() => {
     ctx.fillStyle = '#aaa';
     ctx.font = '14px sans-serif';
     ctx.fillText('Click to return to menu', canvasW / 2, canvasH / 2 + 60);
+
+    if (won && gs && gs.winner) triggerConfetti();
   }
 
   function drawMenu(ctx, phase) {
@@ -539,15 +591,24 @@ const UI = (() => {
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
+    const titleY = 100;
     ctx.fillStyle = '#FFD700';
     ctx.font = 'bold 32px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('CAROM & 4-BALL BILLIARDS', canvasW / 2, 100);
+
+    ctx.shadowColor = 'rgba(255,215,0,0.4)';
+    ctx.shadowBlur = 20;
+    ctx.fillText('CAROM & 4-BALL BILLIARDS', canvasW / 2, titleY);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#888';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('3-Top | 3-Bant | 4-Top', canvasW / 2, titleY + 20);
 
     if (phase === 'targetselect') {
       ctx.fillStyle = '#fff';
       ctx.font = '16px sans-serif';
-      ctx.fillText('Bitis Sayisini Secin', canvasW / 2, 150);
+      ctx.fillText('Bitis Sayisini Secin', canvasW / 2, 155);
 
       const buttons = getTargetScoreButtons();
       for (const btn of buttons) {
@@ -794,6 +855,7 @@ const UI = (() => {
     getAIToggleButton, toggleAI, isAIToggled, getDiffClick,
     isTrajectoryMode, toggleTrajectoryMode, drawTrajectoryPreview,
     drawStrikeIndicator, drawFullTrajectory,
-    getStatsButton, drawStatsMenu, getStatsButtonClick
+    getStatsButton, drawStatsMenu, getStatsButtonClick,
+    updateConfetti, drawConfetti, triggerConfetti
   };
 })();
