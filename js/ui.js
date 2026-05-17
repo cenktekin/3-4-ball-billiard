@@ -173,10 +173,12 @@ const UI = (() => {
       }
     }
 
+    if (trajectoryMode) return;
+
     ctx.save();
-    ctx.setLineDash([8, 6]);
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(startX, startY);
 
@@ -184,16 +186,15 @@ const UI = (() => {
       ctx.lineTo(hitX, hitY);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(hitX, hitY, cueBall.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([]);
-      ctx.stroke();
+      ctx.arc(hitX, hitY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fill();
     } else {
-      ctx.lineTo(startX + dirX * 500, startY + dirY * 500);
+      ctx.lineTo(startX + dirX * 300, startY + dirY * 300);
       ctx.stroke();
     }
 
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
@@ -208,6 +209,13 @@ const UI = (() => {
 
     ctx.save();
 
+    const gradient = ctx.createLinearGradient(
+      pts[0].x, pts[0].y,
+      pts[pts.length - 1].x, pts[pts.length - 1].y
+    );
+    gradient.addColorStop(0, 'rgba(0,230,118,0.9)');
+    gradient.addColorStop(1, 'rgba(0,180,80,0.4)');
+
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     let hitIdx = -1;
@@ -215,25 +223,42 @@ const UI = (() => {
       ctx.lineTo(pts[i].x, pts[i].y);
       if (pts[i].type === 'ball_hit') hitIdx = i;
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(0,230,118,0.5)';
+    ctx.shadowBlur = 6;
     ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    for (let i = 0; i < pts.length; i += 4) {
+      const p = pts[i];
+      const alpha = 0.3 + (i / pts.length) * 0.5;
+      const size = 2 + (i / pts.length) * 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,230,118,${alpha})`;
+      ctx.fill();
+    }
 
     if (hitIdx > 0 && hitIdx < pts.length) {
       const hp = pts[hitIdx];
       ctx.beginPath();
-      ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,215,0,0.8)';
-      ctx.fill();
+      ctx.arc(hp.x, hp.y, 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(hp.x, hp.y, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,215,0,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
 
     for (const pt of pts) {
       if (pt.type === 'cushion') {
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(100,200,255,0.6)';
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(100,180,255,0.7)';
         ctx.fill();
       }
     }
@@ -293,14 +318,20 @@ const UI = (() => {
       const subsample = Math.max(1, Math.floor(pts.length / 40));
 
       if (isCue) {
+        const grad = ctx.createLinearGradient(
+          pts[0].x, pts[0].y,
+          pts[pts.length - 1].x, pts[pts.length - 1].y
+        );
+        grad.addColorStop(0, 'rgba(0,200,255,0.9)');
+        grad.addColorStop(1, 'rgba(0,150,200,0.5)');
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) {
           ctx.lineTo(pts[i].x, pts[i].y);
         }
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeStyle = grad;
         ctx.lineWidth = 3;
-        ctx.shadowColor = 'rgba(255,255,255,0.3)';
+        ctx.shadowColor = 'rgba(0,200,255,0.4)';
         ctx.shadowBlur = 6;
         ctx.stroke();
         ctx.shadowBlur = 0;
@@ -311,26 +342,30 @@ const UI = (() => {
           const size = 3 + (i / pts.length) * 2;
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, size, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+          ctx.fillStyle = `rgba(0,200,255,${alpha})`;
           ctx.fill();
         }
       } else {
+        const grad2 = ctx.createLinearGradient(
+          pts[0].x, pts[0].y,
+          pts[pts.length - 1].x, pts[pts.length - 1].y
+        );
+        grad2.addColorStop(0, 'rgba(255,180,0,0.8)');
+        grad2.addColorStop(1, 'rgba(255,140,0,0.4)');
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) {
           ctx.lineTo(pts[i].x, pts[i].y);
         }
-        ctx.strokeStyle = 'rgba(255,200,50,0.7)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = grad2;
+        ctx.lineWidth = 2.5;
         ctx.stroke();
-        ctx.setLineDash([]);
 
         for (let i = 0; i < pts.length; i += subsample) {
           const pt = pts[i];
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,200,50,0.5)';
+          ctx.fillStyle = 'rgba(255,180,0,0.6)';
           ctx.fill();
         }
       }

@@ -657,15 +657,15 @@
       ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, 36);
     } else if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
       if (UI.isTrajectoryMode()) {
-        ctx.fillStyle = 'rgba(0,180,80,0.7)';
+        ctx.fillStyle = 'rgba(0,230,118,0.9)';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('[G] ROTA GOSTERILIYOR', 890, 20);
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillText('[G] ROTA ACIK', 890, 20);
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
         ctx.font = '10px sans-serif';
-        ctx.fillText('Fare+sag tik = spin ayari', 890, 34);
+        ctx.fillText('yesil = rota,alti = carpma noktasi', 890, 34);
       } else {
-        ctx.fillStyle = 'rgba(200,100,100,0.5)';
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
         ctx.font = 'bold 11px sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText('[G] ROTA KAPALI', 890, 20);
