@@ -58,6 +58,7 @@
       } else {
         const ready = AI.update(dt * 16.67);
         if (ready) {
+          Audio.playShot(gameState.shotPower);
           gameState.startShot();
           Physics.applyShot(gameState.cueBall, gameState.aimAngle, gameState.shotPower);
           gameState.shotPower = 0;
@@ -86,7 +87,11 @@
       Physics.moveBall(ball, dt);
       const cushionHit = Physics.checkCushionCollision(ball, bounds);
       if (cushionHit) {
+        Audio.playCushionHit();
         gameState.recordCushionHit();
+        if (gameState.mode === '3cushion') {
+          Audio.playCushionCount(gameState.cushionHits);
+        }
         if (ball.id === cueBallId) {
           gameState.recordFirstHit('cushion');
         }
@@ -98,6 +103,10 @@
         if (!balls[i].active || !balls[j].active) continue;
         const collided = Physics.checkBallCollision(balls[i], balls[j]);
         if (collided) {
+          if (gameState.trySoundPair(balls[i].id, balls[j].id)) {
+            const vel = Math.sqrt(balls[i].vx * balls[i].vx + balls[i].vy * balls[i].vy);
+            Audio.playBallHit(vel);
+          }
           if (balls[i].id === cueBallId) {
             gameState.recordBallHit(balls[j].id);
             gameState.recordFirstHit('ball');
@@ -123,11 +132,23 @@
     if (gameState.mode === '4ball') {
       result = Mode4Ball.evaluateShot(gameState);
 
+      Stats.recordShot(result.scored);
+      if (result.scored) {
+        Audio.playScore(result.points);
+      } else {
+        Audio.playMiss();
+      }
       showMessage(result.message, 2000);
+
+      if (!result.scored) {
+        Audio.playTurnSwitch();
+      }
 
       if (Mode4Ball.checkWin(gameState)) {
         gameState.won = true;
         gameState.phase = 'gameover';
+        Audio.playWin();
+        Stats.recordGame('4ball', gameState.winner === 1, gameState.score, gameState.p1Score, gameState.p2Score);
         return;
       }
 
@@ -151,11 +172,20 @@
       result = Mode3Ball.evaluateShot(gameState, true);
     }
 
+    Stats.recordShot(result.scored);
+    if (result.scored) {
+      Audio.playScore(1);
+    } else {
+      Audio.playMiss();
+      Audio.playTurnSwitch();
+    }
     showMessage(result.message, 2000);
 
     if (Mode3Ball.checkWin(gameState)) {
       gameState.won = true;
       gameState.phase = 'gameover';
+      Audio.playWin();
+      Stats.recordGame(gameState.mode, gameState.winner === 1, gameState.score, gameState.p1Score, gameState.p2Score);
       return;
     }
 
@@ -240,6 +270,7 @@
   }
 
   function onMouseDown(e) {
+    Audio.ensureInit();
     const rect = canvas.getBoundingClientRect();
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
@@ -250,6 +281,21 @@
         if (mouseX >= aiBtn.x && mouseX <= aiBtn.x + aiBtn.w &&
             mouseY >= aiBtn.y && mouseY <= aiBtn.y + aiBtn.h) {
           UI.toggleAI();
+          return;
+        }
+
+        if (UI.isAIToggled()) {
+          const diffKey = UI.getDiffClick(mouseX, mouseY);
+          if (diffKey) {
+            AI.setDifficulty(diffKey);
+            return;
+          }
+        }
+
+        const statsBtn = UI.getStatsButton();
+        if (mouseX >= statsBtn.x && mouseX <= statsBtn.x + statsBtn.w &&
+            mouseY >= statsBtn.y && mouseY <= statsBtn.y + statsBtn.h) {
+          menuPhase = 'stats';
           return;
         }
 
@@ -274,6 +320,11 @@
         } else {
           menuPhase = 'modeselect';
           pendingMode = null;
+        }
+        return;
+      } else if (menuPhase === 'stats') {
+        if (UI.getStatsButtonClick(mouseX, mouseY)) {
+          menuPhase = 'modeselect';
         }
         return;
       }
@@ -404,6 +455,7 @@
       e.preventDefault();
       if (gameState.cueBall && gameState.cueBall.active) {
         UI.triggerChalk(gameState.cueBall.x, gameState.cueBall.y);
+        Audio.playChalk();
       }
     }
     if (e.code === 'KeyR' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
@@ -413,7 +465,7 @@
     }
     if (e.code === 'KeyG' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
       UI.toggleTrajectoryMode();
-      showMessage(UI.isTrajectoryMode() ? 'TAHMİN: ACIK — Top yollari gorunur' : 'TAHMİN: KAPALI', 1200);
+      showMessage(UI.isTrajectoryMode() ? '[G] ROTA ACIK' : '[G] ROTA KAPALI', 1200);
     }
   }
 
@@ -427,6 +479,7 @@
   }
 
   function fireShot() {
+    Audio.playShot(gameState.shotPower);
     gameState.isCharging = false;
     gameState.startShot();
     Physics.applyShot(
@@ -441,7 +494,11 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (gameState.phase === 'menu') {
-      UI.drawMenu(ctx, menuPhase);
+      if (menuPhase === 'stats') {
+        UI.drawStatsMenu(ctx);
+      } else {
+        UI.drawMenu(ctx, menuPhase);
+      }
       return;
     }
 
@@ -477,12 +534,9 @@
       UI.drawAimLine(ctx, gameState.cueBall, gameState.aimAngle, gameState.balls, bounds, gameState.spinX, gameState.spinY);
       if (UI.isTrajectoryMode()) {
         const simPower = gameState.shotPower > 2 ? gameState.shotPower : 12;
-        const fullTrajs = Physics.simulateFullShot(
-          gameState.cueBall, gameState.aimAngle,
+        UI.drawTrajectoryPreview(ctx, gameState.cueBall, gameState.aimAngle,
           simPower, gameState.spinX, gameState.spinY,
-          gameState.balls, bounds, 400
-        );
-        UI.drawFullTrajectory(ctx, fullTrajs);
+          gameState.balls, bounds);
       }
       UI.drawPowerRing(ctx, gameState.cueBall, gameState.shotPower);
       UI.drawStrikeIndicator(ctx, gameState.cueBall, gameState.spinX, gameState.spinY);
@@ -499,13 +553,21 @@
     UI.drawChalk(ctx);
     UI.drawScoreboard(ctx, gameState);
 
-    if (UI.isTrajectoryMode() && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
-      ctx.fillStyle = 'rgba(0,200,100,0.15)';
-      ctx.fillRect(0, 0, 900, 580);
-      ctx.fillStyle = 'rgba(0,200,100,0.8)';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('[G] TAHMİN MODU AKTİF', 890, 20);
+    if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
+      if (UI.isTrajectoryMode()) {
+        ctx.fillStyle = 'rgba(0,180,80,0.7)';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('[G] ROTA GÖSTERİLİYOR', 890, 20);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('Fare+sag tik = spin ayari', 890, 34);
+      } else {
+        ctx.fillStyle = 'rgba(200,100,100,0.5)';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('[G] ROTA KAPALI', 890, 20);
+      }
     }
 
     if (gameState.cueBall) {

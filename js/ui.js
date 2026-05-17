@@ -2,7 +2,7 @@ const UI = (() => {
   const chalkParticles = [];
   let chalkActive = false;
   let chalkTimer = 0;
-  let trajectoryMode = false;
+  let trajectoryMode = true;
 
   function isTrajectoryMode() { return trajectoryMode; }
   function toggleTrajectoryMode() { trajectoryMode = !trajectoryMode; }
@@ -149,67 +149,86 @@ const UI = (() => {
 
   function drawTrajectoryPreview(ctx, cueBall, angle, power, spinX, spinY, balls, tableBounds) {
     if (!cueBall || !cueBall.active) return;
-    const points = Physics.simulateTrajectory(
+    const result = Physics.simulateTrajectory(
       cueBall.x, cueBall.y, angle, power, spinX, spinY,
       tableBounds, balls, 300
     );
-    if (points.length < 2) return;
+    const pts = result.cuePoints;
+    if (!pts || pts.length < 2) return;
 
     ctx.save();
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const p = points[i];
-      const next = points[i + 1];
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    let hitIdx = -1;
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+      if (pts[i].type === 'ball_hit') hitIdx = i;
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-      if (next.type === 'ball_hit') {
-        ctx.strokeStyle = 'rgba(255,215,0,0.6)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-      } else if (p.type === 'cushion' || next.type === 'cushion') {
-        ctx.strokeStyle = 'rgba(100,200,255,0.5)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 4]);
-      } else {
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([6, 6]);
-      }
-
+    if (hitIdx > 0 && hitIdx < pts.length) {
+      const hp = pts[hitIdx];
       ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(next.x, next.y);
-      ctx.stroke();
+      ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,215,0,0.8)';
+      ctx.fill();
     }
 
-    for (const pt of points) {
+    for (const pt of pts) {
       if (pt.type === 'cushion') {
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(100,200,255,0.7)';
-        ctx.fill();
-      } else if (pt.type === 'ball_hit') {
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,215,0,0.8)';
+        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(100,200,255,0.6)';
         ctx.fill();
       }
-    }
-
-    const last = points[points.length - 1];
-    if (last.type === 'end') {
-      ctx.beginPath();
-      ctx.arc(last.x, last.y, cueBall.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([]);
-      ctx.stroke();
     }
 
     ctx.restore();
   }
 
-  function drawFullTrajectory(ctx, trajectories) {
-    if (!trajectories || trajectories.length === 0) return;
+  function drawSimpleTrajectory(ctx, cueBall, angle, spinX, spinY) {
+    const bounds = Table.getBounds();
+    const power = 12;
+    const result = Physics.simulateTrajectory(
+      cueBall.x, cueBall.y, angle, power, spinX, spinY,
+      bounds, [], 200
+    );
+    const pts = result.cuePoints;
+    if (!pts || pts.length < 2) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.strokeStyle = 'rgba(0,200,255,0.9)';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(0,200,255,0.5)';
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < pts.length; i += 5) {
+      const p = pts[i];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,200,255,0.6)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawFullTrajectory(ctx, trajectories, cueBall, angle, spinX, spinY) {
+    if (!trajectories || trajectories.length === 0) {
+      if (cueBall && cueBall.active) {
+        drawSimpleTrajectory(ctx, cueBall, angle, spinX, spinY);
+      }
+      return;
+    }
     ctx.save();
 
     for (const traj of trajectories) {
@@ -217,40 +236,94 @@ const UI = (() => {
       if (!pts || pts.length < 2) continue;
 
       const isCue = traj.isCue;
-
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x, pts[i].y);
-      }
+      const dist = Math.sqrt(
+        (pts[pts.length - 1].x - pts[0].x) ** 2 +
+        (pts[pts.length - 1].y - pts[0].y) ** 2
+      );
+      const subsample = Math.max(1, Math.floor(pts.length / 40));
 
       if (isCue) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 2.5;
-        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgba(255,255,255,0.3)';
+        ctx.shadowBlur = 6;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        for (let i = 0; i < pts.length; i += subsample) {
+          const pt = pts[i];
+          const alpha = 0.4 + (i / pts.length) * 0.5;
+          const size = 3 + (i / pts.length) * 2;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+          ctx.fill();
+        }
       } else {
-        ctx.strokeStyle = 'rgba(255,100,100,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.strokeStyle = 'rgba(255,200,50,0.7)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
-      }
-      ctx.stroke();
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-      ctx.setLineDash([]);
-      for (let i = 0; i < pts.length; i++) {
-        const pt = pts[i];
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, isCue ? 4 : 3, 0, Math.PI * 2);
-        ctx.fillStyle = isCue ? 'rgba(255,255,255,0.7)' : 'rgba(255,100,100,0.7)';
-        ctx.fill();
+        for (let i = 0; i < pts.length; i += subsample) {
+          const pt = pts[i];
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,200,50,0.5)';
+          ctx.fill();
+        }
       }
+    }
 
-      if (pts.length > 0) {
-        const last = pts[pts.length - 1];
+    const cueTraj = trajectories.find(t => t.isCue);
+    if (cueTraj && cueTraj.points.length > 2) {
+      const otherTraj = trajectories.find(t => !t.isCue);
+      if (otherTraj && otherTraj.points.length > 0) {
+        const impactPt = otherTraj.points[0];
         ctx.beginPath();
-        ctx.arc(last.x, last.y, isCue ? 7 : 6, 0, Math.PI * 2);
-        ctx.strokeStyle = isCue ? 'rgba(255,255,255,0.9)' : 'rgba(255,100,100,0.9)';
+        ctx.arc(impactPt.x, impactPt.y, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,215,0,0.8)';
         ctx.lineWidth = 2;
         ctx.stroke();
+        const grad = ctx.createRadialGradient(impactPt.x, impactPt.y, 0, impactPt.x, impactPt.y, 12);
+        grad.addColorStop(0, 'rgba(255,215,0,0.3)');
+        grad.addColorStop(1, 'rgba(255,215,0,0)');
+        ctx.beginPath();
+        ctx.arc(impactPt.x, impactPt.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+    }
+
+    for (const traj of trajectories) {
+      const pts = traj.points;
+      if (!pts || pts.length < 2) continue;
+      const last = pts[pts.length - 1];
+      const isCue = traj.isCue;
+
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, isCue ? 8 : 6, 0, Math.PI * 2);
+      ctx.strokeStyle = isCue ? 'rgba(255,255,255,0.8)' : 'rgba(255,200,50,0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      if (!isCue && traj.id) {
+        ctx.fillStyle = 'rgba(255,200,50,0.7)';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(traj.id.toUpperCase(), last.x, last.y - 10);
       }
     }
 
@@ -517,7 +590,32 @@ const UI = (() => {
       ctx.strokeRect(aiBtn.x, aiBtn.y, aiBtn.w, aiBtn.h);
       ctx.fillStyle = aiBtn.active ? '#4CAF50' : '#888';
       ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(aiBtn.active ? 'AI: AKTIF' : 'AI: KAPALI', canvasW / 2, aiBtn.y + aiBtn.h / 2 + 5);
+      ctx.fillText(aiBtn.active ? 'AI: ' + AI.getDifficultyLabel() : 'AI: KAPALI', canvasW / 2, aiBtn.y + aiBtn.h / 2 + 5);
+
+      if (aiBtn.active) {
+        const diffBtns = getDiffButtons();
+        const curDiff = AI.getDifficulty();
+        for (const btn of diffBtns) {
+          const isActive = btn.key === curDiff;
+          ctx.fillStyle = isActive ? 'rgba(76,175,80,0.4)' : 'rgba(255,255,255,0.08)';
+          ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+          ctx.strokeStyle = isActive ? '#4CAF50' : '#555';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+          ctx.fillStyle = isActive ? '#4CAF50' : '#999';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 4);
+        }
+      }
+
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
+      ctx.strokeStyle = '#4CAF50';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
+      ctx.fillStyle = '#4CAF50';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('KARIYER STATS', canvasW / 2, STATS_BTN.y + STATS_BTN.h / 2 + 5);
 
       ctx.fillStyle = '#888';
       ctx.font = '12px sans-serif';
@@ -526,13 +624,36 @@ const UI = (() => {
   }
 
   let aiToggleActive = false;
+  const DIFF_BTNS = [
+    { label: 'KOLAY', key: 'easy' },
+    { label: 'ORTA', key: 'medium' },
+    { label: 'ZOR', key: 'hard' }
+  ];
 
   function getAIToggleButton() {
     const canvasW = 900;
     return {
-      x: (canvasW - 160) / 2, y: 345, w: 160, h: 35,
+      x: (canvasW - 160) / 2, y: 340, w: 160, h: 30,
       active: aiToggleActive
     };
+  }
+
+  function getDiffButtons() {
+    const canvasW = 900;
+    const bw = 80;
+    const startX = (canvasW - bw * 3 - 10) / 2;
+    return DIFF_BTNS.map((d, i) => ({
+      x: startX + i * (bw + 5), y: 375, w: bw, h: 25,
+      label: d.label, key: d.key
+    }));
+  }
+
+  function getDiffClick(mx, my) {
+    for (const btn of getDiffButtons()) {
+      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h)
+        return btn.key;
+    }
+    return null;
   }
 
   function toggleAI() {
@@ -582,13 +703,97 @@ const UI = (() => {
   function drawSpinOnBall(ctx, cueBall, spinX, spinY) {
   }
 
+  const STATS_BTN = { x: 360, y: 405, w: 180, h: 30 };
+
+  function getStatsButton() { return STATS_BTN; }
+
+  function drawStatsMenu(ctx) {
+    const canvasW = 900, canvasH = 580;
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('KARIYER ISTATISTIKLERI', canvasW / 2, 60);
+
+    const s = Stats.getStats();
+    const wr = Stats.getWinRate();
+    const acc = Stats.getShotAccuracy();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px sans-serif';
+    const lines = [
+      'Toplam Oyun: ' + s.totalGames,
+      'Kazanma: ' + s.totalWins + ' / ' + s.totalGames + '  (' + wr + '%)',
+      'Seri: ' + s.currentStreak + ' (En iyi: ' + s.bestStreak + ')',
+      'Isabet: ' + acc + '%  (' + s.scoringShots + '/' + s.totalShots + ' vurus)',
+      '',
+      '--- MOD BAZINDA ---'
+    ];
+    const modes = [
+      { key: '4ball', label: '4-Top' },
+      { key: '3ball', label: '3-Top (Carom)' },
+      { key: '3cushion', label: '3-Bant' }
+    ];
+    for (const m of modes) {
+      const ms = Stats.getModeStats(m.key);
+      lines.push(m.label + ': ' + ms.played + ' oyun, ' + ms.won + ' galibiyet, En yuksek: ' + ms.bestScore);
+    }
+
+    lines.push('', '--- SON MACLAR ---');
+    if (s.history.length === 0) {
+      lines.push('Henuz mac kaydi yok');
+    } else {
+      const maxShow = Math.min(s.history.length, 8);
+      for (let i = 0; i < maxShow; i++) {
+        const h = s.history[i];
+        const modeLabel = modes.find(m => m.key === h.mode)?.label || h.mode;
+        const date = new Date(h.date).toLocaleDateString('tr-TR');
+        lines.push(date + ' | ' + modeLabel + ' | ' + h.p1Score + '-' + h.p2Score + (h.won ? ' W' : ' L'));
+      }
+    }
+
+    const startY = 95;
+    const lineH = 22;
+    ctx.textAlign = 'left';
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('---')) {
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 13px sans-serif';
+      } else if (lines[i] === '') {
+        continue;
+      } else {
+        ctx.fillStyle = '#ccc';
+        ctx.font = '13px sans-serif';
+      }
+      ctx.fillText(lines[i], 60, startY + i * lineH);
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('← GERI', canvasW / 2, STATS_BTN.y + STATS_BTN.h / 2 + 5);
+  }
+
+  function getStatsButtonClick(mx, my) {
+    return mx >= STATS_BTN.x && mx <= STATS_BTN.x + STATS_BTN.w &&
+           my >= STATS_BTN.y && my <= STATS_BTN.y + STATS_BTN.h;
+  }
+
   return {
     drawAimLine, drawPowerRing, triggerChalk, updateChalk, drawChalk,
     drawPreviewPanel, drawScoreboard, drawGameOver, drawMenu,
     getMenuButtons, getTargetScoreButtons, getTargetScoreClick,
     drawSpinOnBall, getSpinLabel,
-    getAIToggleButton, toggleAI, isAIToggled,
+    getAIToggleButton, toggleAI, isAIToggled, getDiffClick,
     isTrajectoryMode, toggleTrajectoryMode, drawTrajectoryPreview,
-    drawStrikeIndicator, drawFullTrajectory
+    drawStrikeIndicator, drawFullTrajectory,
+    getStatsButton, drawStatsMenu, getStatsButtonClick
   };
 })();
