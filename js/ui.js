@@ -867,7 +867,7 @@ const UI = (() => {
     getAIToggleButton, toggleAI, isAIToggled, getDiffClick,
     isTrajectoryMode, toggleTrajectoryMode, drawTrajectoryPreview,
     drawStrikeIndicator, drawFullTrajectory,
-    getStatsButton, drawStatsMenu, getStatsButtonClick,
+    getStatsButton, getThemeButton, drawStatsMenu, getStatsButtonClick,
     updateConfetti, drawConfetti, triggerConfetti
   };
 })();
