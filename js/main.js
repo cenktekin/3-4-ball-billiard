@@ -12,6 +12,10 @@
   let aiShotDelay = 0;
   let screenShake = 0;
   let impactFlash = 0;
+  let lastShotSnapshot = null;
+  let isReplaying = false;
+  let replayTrajectory = null;
+  let replayTrajectories = null;
 
   function init() {
     canvas = document.getElementById('gameCanvas');
@@ -478,9 +482,13 @@
       }
     }
     if (e.code === 'KeyR' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
-      gameState.spinX = 0;
-      gameState.spinY = 0;
-      showMessage('Spin reset', 800);
+      if (e.shiftKey) {
+        toggleReplay();
+      } else {
+        gameState.spinX = 0;
+        gameState.spinY = 0;
+        showMessage('Spin reset', 800);
+      }
     }
     if (e.code === 'KeyG' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
       UI.toggleTrajectoryMode();
@@ -498,6 +506,7 @@
   }
 
   function fireShot() {
+    saveShotSnapshot();
     Audio.playShot(gameState.shotPower);
     triggerImpactFlash(gameState.shotPower);
     gameState.isCharging = false;
@@ -508,6 +517,42 @@
     );
     gameState.shotPower = 0;
     gameState.phase = 'moving';
+  }
+
+  function saveShotSnapshot() {
+    if (!gameState.cueBall) return;
+    const simResult = Physics.simulateFullShot(
+      gameState.cueBall,
+      gameState.aimAngle,
+      gameState.shotPower || 12,
+      gameState.spinX || 0,
+      gameState.spinY || 0,
+      gameState.balls,
+      Table.getBounds(),
+      400
+    );
+    if (simResult && simResult.length > 0) {
+      lastShotSnapshot = {
+        angle: gameState.aimAngle,
+        power: gameState.shotPower || 12,
+        spinX: gameState.spinX || 0,
+        spinY: gameState.spinY || 0,
+        trajectories: simResult
+      };
+    }
+  }
+
+  function toggleReplay() {
+    if (!lastShotSnapshot || gameState.phase !== 'aiming') return;
+    isReplaying = !isReplaying;
+    if (isReplaying) {
+      replayTrajectory = lastShotSnapshot.trajectories[0];
+      replayTrajectories = lastShotSnapshot.trajectories;
+    } else {
+      replayTrajectory = null;
+      replayTrajectories = null;
+    }
+    showMessage(isReplaying ? '[R] REPLAY ACIK' : '[R] REPLAY KAPALI', 1200);
   }
 
   function triggerImpactFlash(power) {
@@ -593,15 +638,29 @@
       }
     }
 
+    if (isReplaying && replayTrajectories) {
+      ctx.fillStyle = 'rgba(0,200,255,0.8)';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, 36);
+      UI.drawFullTrajectory(ctx, replayTrajectories, gameState.cueBall,
+        gameState.aimAngle, gameState.spinX, gameState.spinY);
+    }
+
     UI.drawChalk(ctx);
     UI.drawScoreboard(ctx, gameState);
 
-    if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
+    if (isReplaying) {
+      ctx.fillStyle = 'rgba(0,200,255,0.8)';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, 36);
+    } else if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
       if (UI.isTrajectoryMode()) {
         ctx.fillStyle = 'rgba(0,180,80,0.7)';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('[G] ROTA GÖSTERİLİYOR', 890, 20);
+        ctx.fillText('[G] ROTA GOSTERILIYOR', 890, 20);
         ctx.fillStyle = 'rgba(255,255,255,0.3)';
         ctx.font = '10px sans-serif';
         ctx.fillText('Fare+sag tik = spin ayari', 890, 34);
