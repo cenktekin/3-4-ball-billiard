@@ -2,10 +2,26 @@ const AI = (() => {
   let enabled = false;
   let thinking = false;
   let thinkTimer = 0;
-  const THINK_DELAY = 800;
+  let difficulty = 'medium';
+  let aiCushionDelay = 0;
+
+  const DIFFICULTY = {
+    easy:   { thinkDelay: 1200, noise: 0.15, powerNoise: 0.2, useSpin: false, cushionBonus: 0 },
+    medium: { thinkDelay: 800,  noise: 0.06, powerNoise: 0.1, useSpin: true,  cushionBonus: 0.5 },
+    hard:   { thinkDelay: 500,  noise: 0.02, powerNoise: 0.04, useSpin: true,  cushionBonus: 1 }
+  };
 
   function setEnabled(val) { enabled = val; }
   function isEnabled() { return enabled; }
+
+  function setDifficulty(d) {
+    if (DIFFICULTY[d]) difficulty = d;
+  }
+  function getDifficulty() { return difficulty; }
+  function getDifficultyLabel() {
+    const labels = { easy: 'KOLAY', medium: 'ORTA', hard: 'ZOR' };
+    return labels[difficulty] || 'ORTA';
+  }
 
   function findBestShot(gameState) {
     const cue = gameState.cueBall;
@@ -16,8 +32,9 @@ const AI = (() => {
     if (targets.length === 0) return null;
 
     const mode = gameState.mode;
+    const diff = DIFFICULTY[difficulty];
     let bestShot = null;
-    let bestScore = -1;
+    let bestScore = -Infinity;
 
     const step = 0.02;
     for (let angle = 0; angle < Math.PI * 2; angle += step) {
@@ -25,16 +42,24 @@ const AI = (() => {
       if (!hit) continue;
 
       const deflections = getDeflections(cue, angle, hit, targets);
-      const shotScore = rateShot(hit, deflections, mode);
+      const baseScore = rateShot(hit, deflections, mode, diff);
 
-      if (shotScore > bestScore) {
-        bestScore = shotScore;
+      let cushionFirst = mode === '3cushion' && canDoCushionFirst(hit) ? 10 : 0;
+
+      const distPenalty = Math.min(hit.dist / 800, 1) * 5;
+      const totalScore = baseScore + cushionFirst - distPenalty;
+
+      if (totalScore > bestScore) {
+        bestScore = totalScore;
+        const spin = diff.useSpin ? calcSpin(cue, hit, targets, mode) : { spinX: 0, spinY: 0 };
         bestShot = {
           angle: angle,
-          power: calcPower(cue, hit.ball, hit.point),
+          power: calcPower(cue, hit.ball, hit.point, diff),
           firstBall: hit.ball,
           deflections: deflections,
-          score: shotScore
+          score: totalScore,
+          spinX: spin.spinX,
+          spinY: spin.spinY
         };
       }
     }
@@ -48,12 +73,66 @@ const AI = (() => {
           power: 10,
           firstBall: closest,
           deflections: [],
-          score: 0
+          score: 0,
+          spinX: 0, spinY: 0
         };
       }
     }
 
     return bestShot;
+  }
+
+  function calcSpin(cue, hit, targets, mode) {
+    const nx = hit.normal.x;
+    const ny = hit.normal.y;
+    const tx = -ny;
+    const ty = nx;
+
+    const cueAfterX = cue.x + nx * 30;
+    const cueAfterY = cue.y + ny * 30;
+
+    let spinX = 0, spinY = 0;
+
+    const otherBalls = targets.filter(b => b !== hit.ball);
+    if (otherBalls.length === 0) return { spinX: 0, spinY: 0 };
+
+    let closestDist = Infinity;
+    let closestBall = null;
+    for (const b of otherBalls) {
+      const d = Math.sqrt((b.x - cueAfterX) ** 2 + (b.y - cueAfterY) ** 2);
+      if (d < closestDist) { closestDist = d; closestBall = b; }
+    }
+
+    if (closestBall && closestDist < 200) {
+      const angleToTarget = Math.atan2(closestBall.y - cueAfterY, closestBall.x - cueAfterX);
+      const angleAfter = Math.atan2(ny, nx);
+      let diff = angleToTarget - angleAfter;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+
+      if (Math.abs(diff) < Math.PI / 2) {
+        spinY = -0.6;
+        spinX = Math.max(-0.4, Math.min(0.4, diff * 0.5));
+      } else {
+        spinY = 0.6;
+        spinX = Math.max(-0.4, Math.min(0.4, diff * 0.5));
+      }
+    } else if (closestBall && closestDist > 300) {
+      spinY = 0.4;
+    }
+
+    if (mode === '4ball') {
+      if (Math.abs(nx) > Math.abs(ny)) {
+        spinX = nx * 0.5;
+      } else {
+        spinY = -ny * 0.3;
+      }
+    }
+
+    return {
+      spinX: Math.max(-1, Math.min(1, spinX)),
+      spinY: Math.max(-1, Math.min(1, spinY))
+    };
   }
 
   function findFirstBallHit(cue, angle, targets) {
@@ -137,7 +216,7 @@ const AI = (() => {
     return deflections;
   }
 
-  function rateShot(hit, deflections, mode) {
+  function rateShot(hit, deflections, mode, diff) {
     const reachableBalls = new Set();
     reachableBalls.add(hit.ball.id);
 
@@ -148,7 +227,7 @@ const AI = (() => {
     }
 
     const count = reachableBalls.size;
-    const cushionBonus = canDoCushionFirst(hit) ? 15 : 0;
+    const cushionBonus = canDoCushionFirst(hit) ? 15 * diff.cushionBonus : 0;
 
     if (mode === '3ball') {
       if (count >= 2) return 100 + cushionBonus;
@@ -174,7 +253,7 @@ const AI = (() => {
 
   function canDoCushionFirst(hit) {
     const bounds = Table.getBounds();
-    const margin = 30;
+    const margin = 40;
     const hx = hit.ball.x;
     const hy = hit.ball.y;
     return (
@@ -185,10 +264,11 @@ const AI = (() => {
     );
   }
 
-  function calcPower(cue, target, hitPoint) {
+  function calcPower(cue, target, hitPoint, diff) {
     const dist = Math.sqrt((hitPoint.x - cue.x) ** 2 + (hitPoint.y - cue.y) ** 2);
-    const base = dist * 0.06;
-    return Math.min(Math.max(base, 6), Physics.MAX_POWER * 0.8);
+    const base = dist * 0.07;
+    const noise = 1 + (Math.random() - 0.5) * 2 * diff.powerNoise;
+    return Math.min(Math.max(Math.round(base * noise), 4), Physics.MAX_POWER * 0.85);
   }
 
   function findClosestBall(cue, targets) {
@@ -206,15 +286,27 @@ const AI = (() => {
 
   function startThinking(gameState) {
     if (!enabled || thinking) return;
+    const diff = DIFFICULTY[difficulty];
     thinking = true;
-    thinkTimer = THINK_DELAY;
+    thinkTimer = diff.thinkDelay + Math.random() * 200;
 
     const shot = findBestShot(gameState);
     if (shot) {
-      gameState.aimAngle = shot.angle;
+      const diff2 = DIFFICULTY[difficulty];
+      const noise = (Math.random() - 0.5) * 2 * diff2.noise;
+      gameState.aimAngle = shot.angle + noise;
       gameState.shotPower = shot.power;
-      gameState.spinX = 0;
-      gameState.spinY = 0;
+      gameState.spinX = shot.spinX || 0;
+      gameState.spinY = shot.spinY || 0;
+
+      if (difficulty === 'medium') {
+        gameState.spinX += (Math.random() - 0.5) * 0.2;
+        gameState.spinY += (Math.random() - 0.5) * 0.2;
+      }
+      if (difficulty === 'easy') {
+        gameState.spinX = 0;
+        gameState.spinY = 0;
+      }
     }
   }
 
@@ -231,6 +323,7 @@ const AI = (() => {
   function isThinking() { return thinking; }
 
   return {
-    setEnabled, isEnabled, findBestShot, startThinking, update, isThinking
+    setEnabled, isEnabled, setDifficulty, getDifficulty, getDifficultyLabel,
+    findBestShot, startThinking, update, isThinking
   };
 })();
