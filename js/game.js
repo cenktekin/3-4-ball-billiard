@@ -19,6 +19,7 @@ const GameState = (() => {
       this.selectedBallId = null;
       this.cushionHits = 0;
       this.ballsHitThisShot = new Set();
+      this.soundedPairs = new Set();
       this.turnActive = false;
       this.isCharging = false;
       this.won = false;
@@ -41,6 +42,7 @@ const GameState = (() => {
       this.selectedBallId = null;
       this.cushionHits = 0;
       this.ballsHitThisShot = new Set();
+      this.soundedPairs = new Set();
       this.turnActive = false;
       this.isCharging = false;
       this.won = false;
@@ -48,9 +50,18 @@ const GameState = (() => {
 
     startShot() {
       this.ballsHitThisShot.clear();
+      this.soundedPairs.clear();
       this.cushionHits = 0;
       this.firstHitType = null;
       this.turnActive = true;
+    }
+
+    trySoundPair(id1, id2) {
+      if (!this.turnActive) return false;
+      const key = id1 < id2 ? id1 + '|' + id2 : id2 + '|' + id1;
+      if (this.soundedPairs.has(key)) return false;
+      this.soundedPairs.add(key);
+      return true;
     }
 
     recordBallHit(ballId) {

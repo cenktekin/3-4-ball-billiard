@@ -150,12 +150,16 @@ const Physics = (() => {
   }
 
   function simulateTrajectory(startX, startY, angle, power, spinX, spinY, table, balls, maxSteps) {
-    const points = [{ x: startX, y: startY, type: 'start' }];
+    const cuePoints = [{ x: startX, y: startY, type: 'start' }];
+    const hitPoints = [];
     let x = startX, y = startY;
     let vx = Math.cos(angle) * power;
     let vy = Math.sin(angle) * power;
     let sx = spinX || 0;
     let sy = spinY || 0;
+    let hitBallRef = null;
+    let postCollision = false;
+    let hx = 0, hy = 0, hvx = 0, hvy = 0;
     const r = BALL_RADIUS;
     const left = table.x + r;
     const right = table.x + table.width - r;
@@ -171,30 +175,59 @@ const Physics = (() => {
     for (let step = 0; step < maxSteps; step++) {
       let ballHit = null;
       let minT = Infinity;
-      for (const ball of balls) {
-        if (!ball.active) continue;
-        const ocx = ball.x - x;
-        const ocy = ball.y - y;
-        const rSum = r + ball.radius;
-        const a = vx * vx + vy * vy;
-        if (a < 0.001) break;
-        const b = -2 * (ocx * vx + ocy * vy);
-        const c = ocx * ocx + ocy * ocy - rSum * rSum;
-        const disc = b * b - 4 * a * c;
-        if (disc >= 0) {
-          const t = (-b - Math.sqrt(disc)) / (2 * a);
-          if (t > 0.01 && t < minT) {
-            minT = t;
-            ballHit = ball;
+      if (!postCollision) {
+        for (const ball of balls) {
+          if (!ball.active) continue;
+          const ocx = ball.x - x;
+          const ocy = ball.y - y;
+          const rSum = r + ball.radius;
+          const a = vx * vx + vy * vy;
+          if (a < 0.001) break;
+          const b = -2 * (ocx * vx + ocy * vy);
+          const c = ocx * ocx + ocy * ocy - rSum * rSum;
+          const disc = b * b - 4 * a * c;
+          if (disc >= 0) {
+            const t = (-b - Math.sqrt(disc)) / (2 * a);
+            if (t > 0.01 && t < minT) {
+              minT = t;
+              ballHit = ball;
+            }
           }
         }
       }
 
-      if (ballHit && minT < Infinity) {
+      if (ballHit && minT < Infinity && !postCollision) {
         const tx = x + vx * minT;
         const ty = y + vy * minT;
-        points.push({ x: tx, y: ty, type: 'ball_hit', ballId: ballHit.id });
-        break;
+        cuePoints.push({ x: tx, y: ty, type: 'ball_hit', ballId: ballHit.id });
+        hitBallRef = ballHit;
+
+        const nx = (tx - ballHit.x) / (r + ballHit.radius);
+        const ny = (ty - ballHit.y) / (r + ballHit.radius);
+
+        const dvn = vx * nx + vy * ny;
+        const restitution = 0.97;
+        const impulse = dvn * (1 + restitution) / 2;
+        vx -= impulse * nx;
+        vy -= impulse * ny;
+
+        hvx = impulse * nx;
+        hvy = impulse * ny;
+        hx = ballHit.x + nx * 2;
+        hy = ballHit.y + ny * 2;
+
+        if (sx !== 0 || sy !== 0) {
+          const tx2 = -ny; const ty2 = nx;
+          const along = sx * tx2 + sy * ty2;
+          vx += tx2 * along * 0.7;
+          vy += ty2 * along * 0.7;
+          hvx += nx * (sx * nx + sy * ny) * 0.3;
+          hvy += ny * (sx * nx + sy * ny) * 0.3;
+        }
+
+        postCollision = true;
+        hitPoints.push({ x: hx, y: hy, type: 'start' });
+        continue;
       }
 
       x += vx * DT;
@@ -212,19 +245,40 @@ const Physics = (() => {
       if (y < top) { y = top; vy = Math.abs(vy) * CUSHION_REST; cushHit = true; }
       else if (y > bottom) { y = bottom; vy = -Math.abs(vy) * CUSHION_REST; cushHit = true; }
       if (cushHit) {
-        points.push({ x, y, type: 'cushion' });
+        cuePoints.push({ x, y, type: 'cushion' });
       }
 
-      if (Math.abs(vx) + Math.abs(vy) < MIN_V) {
-        points.push({ x, y, type: 'end' });
+      if (postCollision) {
+        hx += hvx * DT;
+        hy += hvy * DT;
+        hvx *= FRIC;
+        hvy *= FRIC;
+        if (hx < left) { hx = left; hvx = Math.abs(hvx) * CUSHION_REST; }
+        else if (hx > right) { hx = right; hvx = -Math.abs(hvx) * CUSHION_REST; }
+        if (hy < top) { hy = top; hvy = Math.abs(hvy) * CUSHION_REST; }
+        else if (hy > bottom) { hy = bottom; hvy = -Math.abs(hvy) * CUSHION_REST; }
+        hitPoints.push({ x: hx, y: hy, type: 'path' });
+      }
+
+      if (Math.abs(vx) + Math.abs(vy) < MIN_V && (!postCollision || Math.abs(hvx) + Math.abs(hvy) < MIN_V)) {
+        if (Math.abs(vx) + Math.abs(vy) < MIN_V) {
+          cuePoints.push({ x, y, type: 'end' });
+        }
+        if (postCollision && Math.abs(hvx) + Math.abs(hvy) < MIN_V) {
+          hitPoints.push({ x: hx, y: hy, type: 'end' });
+        }
         break;
       }
     }
 
-    if (points[points.length - 1].type !== 'end') {
-      points.push({ x, y, type: 'end' });
+    if (cuePoints[cuePoints.length - 1].type !== 'end' && cuePoints[cuePoints.length - 1].type !== 'ball_hit') {
+      cuePoints.push({ x, y, type: 'end' });
     }
-    return points;
+    if (postCollision && hitPoints[hitPoints.length - 1].type !== 'end') {
+      hitPoints.push({ x: hx, y: hy, type: 'end' });
+    }
+
+    return { cuePoints, hitPoints, hitBallId: hitBallRef ? hitBallRef.id : null };
   }
 
   function simulateFullShot(cueBall, angle, power, spinX, spinY, balls, table, maxSteps) {
@@ -282,7 +336,7 @@ const Physics = (() => {
         if (ball.y < top) { ball.y = top; ball.vy = Math.abs(ball.vy) * CUSHION_REST; }
         else if (ball.y > bottom) { ball.y = bottom; ball.vy = -Math.abs(ball.vy) * CUSHION_REST; }
 
-        if (postCollision) {
+        if (ball === simCue || postCollision) {
           ball.traj.push({ x: ball.x, y: ball.y });
         }
       }
@@ -338,7 +392,7 @@ const Physics = (() => {
 
       if (postCollision) {
         for (const ball of allSimBalls) {
-          if (!ball.active) continue;
+          if (!ball.active || ball === simCue) continue;
           ball.traj.push({ x: ball.x, y: ball.y });
         }
       }
