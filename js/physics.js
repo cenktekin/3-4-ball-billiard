@@ -152,133 +152,84 @@ const Physics = (() => {
   function simulateTrajectory(startX, startY, angle, power, spinX, spinY, table, balls, maxSteps) {
     const cuePoints = [{ x: startX, y: startY, type: 'start' }];
     const hitPoints = [];
-    let x = startX, y = startY;
-    let vx = Math.cos(angle) * power;
-    let vy = Math.sin(angle) * power;
-    let sx = spinX || 0;
-    let sy = spinY || 0;
     let hitBallRef = null;
     let postCollision = false;
-    let hx = 0, hy = 0, hvx = 0, hvy = 0;
-    const r = BALL_RADIUS;
-    const left = table.x + r;
-    const right = table.x + table.width - r;
-    const top = table.y + r;
-    const bottom = table.y + table.height - r;
-    const DT = 1.5;
-    const MIN_V = MIN_VELOCITY;
-    const FRIC = FRICTION;
-    const SPIN_DEC = SPIN_DECAY;
-    const CUSHION_REST = WALL_RESTITUTION;
-    const SPIN_CUSH = SPIN_CUSHION_EFFECT;
+
+    // Create a deep copy of the active balls for the simulation
+    const simBalls = balls.filter(b => b.active).map(b => ({
+      id: b.id, 
+      x: b.x, 
+      y: b.y, 
+      vx: 0, 
+      vy: 0, 
+      spinX: 0, 
+      spinY: 0, 
+      radius: b.radius, 
+      active: true
+    }));
+    
+    // Find the virtual cue ball
+    let simCue = simBalls.find(b => Math.abs(b.x - startX) < 1 && Math.abs(b.y - startY) < 1);
+    if (!simCue) {
+      simCue = { id: 'cue_temp', x: startX, y: startY, vx: 0, vy: 0, spinX: 0, spinY: 0, radius: BALL_RADIUS, active: true };
+      simBalls.push(simCue);
+    }
+
+    // Apply the initial shot to the virtual cue ball
+    applyShot(simCue, angle, power, spinX, spinY);
+
+    const DT = 1.0;
 
     for (let step = 0; step < maxSteps; step++) {
-      let ballHit = null;
-      let minT = Infinity;
-      if (!postCollision) {
-        for (const ball of balls) {
-          if (!ball.active) continue;
-          const ocx = ball.x - x;
-          const ocy = ball.y - y;
-          const rSum = r + ball.radius;
-          const a = vx * vx + vy * vy;
-          if (a < 0.001) break;
-          const b = -2 * (ocx * vx + ocy * vy);
-          const c = ocx * ocx + ocy * ocy - rSum * rSum;
-          const disc = b * b - 4 * a * c;
-          if (disc >= 0) {
-            const t = (-b - Math.sqrt(disc)) / (2 * a);
-            if (t > 0.01 && t < minT) {
-              minT = t;
-              ballHit = ball;
-            }
+      let moved = false;
+
+      // 1. Move & Cushion Collisions (Exactly like main game loop)
+      for (const ball of simBalls) {
+        if (isMoving(ball)) {
+          moved = true;
+          applyFriction(ball);
+          applySpinDecay(ball);
+          moveBall(ball, DT);
+          const cushHit = checkCushionCollision(ball, table);
+          
+          if (cushHit && ball === simCue) {
+            cuePoints.push({ x: ball.x, y: ball.y, type: 'cushion' });
           }
         }
       }
 
-      if (ballHit && minT < Infinity && !postCollision) {
-        const tx = x + vx * minT;
-        const ty = y + vy * minT;
-        cuePoints.push({ x: tx, y: ty, type: 'ball_hit', ballId: ballHit.id });
-        hitBallRef = ballHit;
+      // 2. Ball-to-Ball Collisions (Exactly like main game loop)
+      for (let i = 0; i < simBalls.length; i++) {
+        for (let j = i + 1; j < simBalls.length; j++) {
+          const involvesCue = (simBalls[i] === simCue || simBalls[j] === simCue);
+          const target = simBalls[i] === simCue ? simBalls[j] : simBalls[i];
 
-        const nx = (tx - ballHit.x) / (r + ballHit.radius);
-        const ny = (ty - ballHit.y) / (r + ballHit.radius);
-
-        const dvn = vx * nx + vy * ny;
-        const restitution = 0.97;
-        const impulse = dvn * (1 + restitution) / 2;
-        vx -= impulse * nx;
-        vy -= impulse * ny;
-
-        hvx = impulse * nx;
-        hvy = impulse * ny;
-        hx = ballHit.x + nx * 2;
-        hy = ballHit.y + ny * 2;
-
-        if (sx !== 0 || sy !== 0) {
-          const tx2 = -ny; const ty2 = nx;
-          const along = sx * tx2 + sy * ty2;
-          vx += tx2 * along * 0.7;
-          vy += ty2 * along * 0.7;
-          hvx += nx * (sx * nx + sy * ny) * 0.3;
-          hvy += ny * (sx * nx + sy * ny) * 0.3;
+          const collided = checkBallCollision(simBalls[i], simBalls[j]);
+          
+          if (collided && involvesCue && !postCollision) {
+            postCollision = true;
+            hitBallRef = target;
+            cuePoints.push({ x: simCue.x, y: simCue.y, type: 'ball_hit', ballId: target.id });
+          }
         }
-
-        postCollision = true;
-        hitPoints.push({ x: hx, y: hy, type: 'start' });
-        continue;
       }
 
-      x += vx * DT;
-      y += vy * DT;
-      vx *= FRIC;
-      vy *= FRIC;
-      sx *= SPIN_DEC;
-      sy *= SPIN_DEC;
-      if (sx !== 0) vx += sx * SPIN_CUSH * 0.05;
-      if (sy !== 0) vy += sy * SPIN_CUSH * 0.05;
-
-      let cushHit = false;
-      if (x < left) { x = left; vx = Math.abs(vx) * CUSHION_REST; cushHit = true; }
-      else if (x > right) { x = right; vx = -Math.abs(vx) * CUSHION_REST; cushHit = true; }
-      if (y < top) { y = top; vy = Math.abs(vy) * CUSHION_REST; cushHit = true; }
-      else if (y > bottom) { y = bottom; vy = -Math.abs(vy) * CUSHION_REST; cushHit = true; }
-      if (cushHit) {
-        cuePoints.push({ x, y, type: 'cushion' });
+      // Record trajectory path periodically
+      if (postCollision && step % 3 === 0 && isMoving(simCue)) {
+        cuePoints.push({ x: simCue.x, y: simCue.y, type: 'path' });
       }
 
-      if (postCollision) {
-        hx += hvx * DT;
-        hy += hvy * DT;
-        hvx *= FRIC;
-        hvy *= FRIC;
-        if (hx < left) { hx = left; hvx = Math.abs(hvx) * CUSHION_REST; }
-        else if (hx > right) { hx = right; hvx = -Math.abs(hvx) * CUSHION_REST; }
-        if (hy < top) { hy = top; hvy = Math.abs(hvy) * CUSHION_REST; }
-        else if (hy > bottom) { hy = bottom; hvy = -Math.abs(hvy) * CUSHION_REST; }
-        hitPoints.push({ x: hx, y: hy, type: 'path' });
-      }
-
-      if (Math.abs(vx) + Math.abs(vy) < MIN_V && (!postCollision || Math.abs(hvx) + Math.abs(hvy) < MIN_V)) {
-        if (Math.abs(vx) + Math.abs(vy) < MIN_V) {
-          cuePoints.push({ x, y, type: 'end' });
-        }
-        if (postCollision && Math.abs(hvx) + Math.abs(hvy) < MIN_V) {
-          hitPoints.push({ x: hx, y: hy, type: 'end' });
-        }
+      if (!moved) {
+        cuePoints.push({ x: simCue.x, y: simCue.y, type: 'end' });
         break;
       }
     }
 
     if (cuePoints[cuePoints.length - 1].type !== 'end' && cuePoints[cuePoints.length - 1].type !== 'ball_hit') {
-      cuePoints.push({ x, y, type: 'end' });
-    }
-    if (postCollision && hitPoints[hitPoints.length - 1].type !== 'end') {
-      hitPoints.push({ x: hx, y: hy, type: 'end' });
+      cuePoints.push({ x: simCue.x, y: simCue.y, type: 'end' });
     }
 
-    return { cuePoints, hitPoints, hitBallId: hitBallRef ? hitBallRef.id : null };
+    return { cuePoints, hitPoints: [], hitBallId: hitBallRef ? hitBallRef.id : null };
   }
 
   function simulateFullShot(cueBall, angle, power, spinX, spinY, balls, table, maxSteps) {

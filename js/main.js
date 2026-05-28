@@ -643,7 +643,7 @@
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, 36);
-      UI.drawFullTrajectory(ctx, replayTrajectories, gameState.cueBall,
+UI.drawFullTrajectory(ctx, replayTrajectories, gameState.cueBall,
         gameState.aimAngle, gameState.spinX, gameState.spinY);
     }
 
@@ -657,13 +657,14 @@
       ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, 36);
     } else if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
       if (UI.isTrajectoryMode()) {
-        ctx.fillStyle = 'rgba(0,230,118,0.9)';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText('[G] ROTA ACIK', 890, 20);
-        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
         ctx.font = '10px sans-serif';
-        ctx.fillText('yesil = rota,alti = carpma noktasi', 890, 34);
+        ctx.fillText('Beyaz topun rotasi', 890, 34);
+        ctx.fillText('Yesil nokta = carpma', 890, 48);
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.3)';
         ctx.font = 'bold 11px sans-serif';

@@ -220,9 +220,14 @@ const UI = (() => {
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     let hitIdx = -1;
+    let hitX = 0, hitY = 0;
     for (let i = 1; i < pts.length; i++) {
       ctx.lineTo(pts[i].x, pts[i].y);
-      if (pts[i].type === 'ball_hit') hitIdx = i;
+      if (pts[i].type === 'ball_hit' && hitIdx < 0) {
+        hitIdx = i;
+        hitX = pts[i].x;
+        hitY = pts[i].y;
+      }
     }
     ctx.strokeStyle = gradient;
     ctx.lineWidth = 3;
@@ -231,48 +236,52 @@ const UI = (() => {
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    if (hitIdx > 0 && hitIdx < pts.length) {
-      const hp = pts[hitIdx];
+    if (hitPts && hitPts.length > 0) {
       ctx.beginPath();
-      ctx.arc(hp.x, hp.y, 6, 0, Math.PI * 2);
-      ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      if (hitPts && hitPts.length > 0) {
-        ctx.beginPath();
-        ctx.moveTo(hp.x, hp.y);
-        let lastHitPt = hp;
-        for (let i = 0; i < hitPts.length; i++) {
-          ctx.lineTo(hitPts[i].x, hitPts[i].y);
-          lastHitPt = hitPts[i];
-        }
-
-        const hitGrad = ctx.createLinearGradient(hp.x, hp.y, lastHitPt.x, lastHitPt.y);
-        hitGrad.addColorStop(0, 'rgba(255,140,0,0.9)');
-        hitGrad.addColorStop(1, 'rgba(255,80,0,0.4)');
-        ctx.strokeStyle = hitGrad;
-        ctx.lineWidth = 2.5;
-        ctx.shadowColor = 'rgba(255,140,0,0.5)';
-        ctx.shadowBlur = 5;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        for (let i = 0; i < hitPts.length; i += 4) {
-          const p = hitPts[i];
-          const alpha = 0.3 + (i / hitPts.length) * 0.5;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 2 + (i / hitPts.length) * 2, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255,140,0,${alpha})`;
-          ctx.fill();
-        }
+      ctx.moveTo(hitPts[0].x, hitPts[0].y);
+      let lastHitPt = hitPts[0];
+      for (let i = 1; i < hitPts.length; i++) {
+        ctx.lineTo(hitPts[i].x, hitPts[i].y);
+        lastHitPt = hitPts[i];
       }
 
+      const hitGrad = ctx.createLinearGradient(hitPts[0].x, hitPts[0].y, lastHitPt.x, lastHitPt.y);
+      hitGrad.addColorStop(0, 'rgba(255,140,0,0.9)');
+      hitGrad.addColorStop(1, 'rgba(255,80,0,0.4)');
+      ctx.strokeStyle = hitGrad;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(255,140,0,0.5)';
+      ctx.shadowBlur = 5;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      for (let i = 0; i < hitPts.length; i += 4) {
+        const p = hitPts[i];
+        const alpha = 0.3 + (i / hitPts.length) * 0.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2 + (i / hitPts.length) * 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,140,0,${alpha})`;
+        ctx.fill();
+      }
+    }
+
+    if (hitIdx > 0) {
       ctx.beginPath();
-      ctx.arc(hp.x, hp.y, 12, 0, Math.PI * 2);
+      ctx.arc(hitX, hitY, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(hitX, hitY, 14, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(255,215,0,0.3)';
       ctx.lineWidth = 1;
       ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,215,0,0.6)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('CARPMA', hitX, hitY - 18);
     }
 
     for (const pt of pts) {
@@ -283,13 +292,15 @@ const UI = (() => {
         ctx.fill();
       }
     }
-
-    for (const pt of hitPts || []) {
-      if (pt.type === 'cushion') {
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(100,180,255,0.7)';
-        ctx.fill();
+    
+    if (hitPts) {
+      for (const pt of hitPts) {
+        if (pt.type === 'cushion') {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(100,180,255,0.7)';
+          ctx.fill();
+        }
       }
     }
 
