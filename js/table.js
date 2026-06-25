@@ -156,7 +156,7 @@ const Table = (() => {
   function getCanvasSize() {
     return {
       width: 900,
-      height: 580
+      height: 620
     };
   }
 

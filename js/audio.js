@@ -2,9 +2,18 @@ const Audio = (() => {
   'use strict';
 
   let ctx = null;
-  let enabled = true;
+  let enabled = loadSoundSetting();
 
   function init() {}
+
+  function loadSoundSetting() {
+    const saved = localStorage.getItem('billiard_sound_enabled');
+    return saved !== null ? saved === 'true' : true;
+  }
+
+  function saveSoundSetting() {
+    localStorage.setItem('billiard_sound_enabled', String(enabled));
+  }
 
   function getCtx() {
     if (!ctx) {
@@ -16,8 +25,15 @@ const Audio = (() => {
     return ctx;
   }
 
-  function setEnabled(v) { enabled = v; }
+  function setEnabled(v) {
+    enabled = v;
+    saveSoundSetting();
+  }
   function isEnabled() { return enabled; }
+  function toggle() {
+    setEnabled(!enabled);
+    return enabled;
+  }
 
   function playTone(freq, duration, type, volume, ramp) {
     const c = getCtx();
@@ -152,7 +168,7 @@ const Audio = (() => {
   }
 
   return {
-    init, ensureInit, setEnabled, isEnabled,
+    init, ensureInit, setEnabled, isEnabled, toggle,
     playBallHit, playCushionHit, playShot,
     playScore, playMiss, playChalk, playWin,
     playCushionCount, playTurnSwitch

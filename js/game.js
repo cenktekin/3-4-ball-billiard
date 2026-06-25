@@ -23,6 +23,11 @@ const GameState = (() => {
       this.turnActive = false;
       this.isCharging = false;
       this.won = false;
+      this.isPractice = false;
+      this.isTimeAttack = false;
+      this.timeAttackDuration = 120;
+      this.timeAttackRemaining = 0;
+      this.timeAttackScore = 0;
     }
 
     reset() {
@@ -46,6 +51,10 @@ const GameState = (() => {
       this.turnActive = false;
       this.isCharging = false;
       this.won = false;
+      this.isPractice = false;
+      this.isTimeAttack = false;
+      this.timeAttackRemaining = 0;
+      this.timeAttackScore = 0;
     }
 
     startShot() {
