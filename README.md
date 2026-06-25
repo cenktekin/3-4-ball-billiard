@@ -12,11 +12,16 @@ Client-side carom billiards oyunu — tarayıcıda doğrudan oynanır, kurulum g
 
 ## ✨ Özellikler
 
-- Fizik motoru (top çarpışmaları, yastık sekmeleri)
-- Yapay zeka rakip
-- Spin kontrolü (yana/dik vuruş)
-- Vuruş göstergesi ve skor tablosu
-- Responsive tasarım
+- **Fizik motoru** — top-top çarpışmalar, bant sekmeleri, dt-bağımlı sürtünme
+- **Yapay zeka rakip** — 3 zorluk seviyesi (kolay/orta/zor), cushion-first shot stratejisi
+- **Spin kontrolü** — İngilizce (sağ/sol) + follow/draw (ileri/geri), vuruş yönüne göre hesaplanan 3×3 görsel indikatör
+- **Yörünge tahmini** — yeşil çizgi topun bant'lardan sekerek gideceği yolu gösterir
+- **Ghost ball** — vuruş noktası göstergesi (hedef topun arkasında)
+- **Power ring** — glow efektli, 25/50/75% kritik eşik çizgileri
+- **Spin rotation marker** — hareket halindeki topun dönüş yönü oku
+- **Vuruş göstergesi ve skor tablosu**
+- **Practice & Time Attack modları**
+- **Responsive tasarım**
 
 ## 🚀 Kullanım
 
@@ -51,19 +56,26 @@ Tarayıcıda `http://localhost:8000` adresine gidin.
 
 ```
 3-4-ball-billiard/
-├── index.html          # Ana sayfa
+├── index.html          # Ana sayfa (script yükleme sırası kritik)
 ├── css/
 │   └── styles.css      # Stiller
 └── js/
-    ├── physics.js      # Fizik motoru
-    ├── ball.js         # Top yönetimi
+    ├── physics.js      # Fizik motoru (dt-bağımlı friction, spin objesi)
+    ├── ball.js         # Top yönetimi (spin objesi, trail gradient, dönüş oku)
     ├── table.js        # Masa çizimi
-    ├── ui.js           # Arayüz bileşenleri
-    ├── game.js         # Oyun mantığı
-    ├── mode3ball.js    # 3-ball + 3-bant modu
+    ├── audio.js        # Ses efektleri (vuruş, bant, top-top)
+    ├── stats.js        # Kariyer istatistikleri (localStorage)
+    ├── i18n.js         # Çoklu dil desteği (TR/EN)
+    ├── ui.js           # Arayüz bileşenleri (menü, spin zone, ghost ball, power ring)
+    ├── game.js         # Oyun state sınıfı
     ├── mode4ball.js    # 4-ball modu
+    ├── mode3ball.js    # 3-ball + 3-bant modu
+    ├── challenge.js    # Challenge modu
     ├── ai.js           # Yapay zeka
-    └── main.js         # Başlatma
+    ├── gameloop.js     # Update/state machine
+    ├── renderer.js     # Render pipeline
+    ├── input.js        # Mouse/touch input (sağ tık spin, sol tık vuruş)
+    └── main.js         # Başlatma (init + module wiring)
 ```
 
 ## 🛠 Teknolojiler
