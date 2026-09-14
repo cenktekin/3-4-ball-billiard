@@ -54,23 +54,23 @@ const Mode3Ball = (() => {
     if (isThreeCushion) {
       if (allHit && gameState.cushionHits >= 3) {
         addScore(gameState);
-        return { scored: true, keepTurn: true, message: 'SAYI! 3-band + both hit!' };
+        return { scored: true, keepTurn: true, message: I18n.t('score3cushion') };
       }
-      let msg = 'MISS!';
-      if (!allHit) msg = 'Iki topa da degmedi!';
-      else if (gameState.cushionHits < 3) msg = 'Yalnizca ' + gameState.cushionHits + '/3 bant!';
+      let msg = I18n.t('miss');
+      if (!allHit) msg = I18n.t('twoBallsMissed');
+      else if (gameState.cushionHits < 3) msg = I18n.t('cushionsOnly', { n: gameState.cushionHits });
       switchTurn(gameState);
-      return { scored: false, keepTurn: false, message: msg + ' Sira → Player ' + currentPlayer };
+      return { scored: false, keepTurn: false, message: msg + ' ' + I18n.t('turnTo', { n: currentPlayer }) };
     } else {
       if (allHit) {
         addScore(gameState);
-        return { scored: true, keepTurn: true, message: 'SAYI! Iki topa da degdi!' };
+        return { scored: true, keepTurn: true, message: I18n.t('scoreBoth') };
       }
-      let msg = 'MISS!';
-      if (!hit.has(otherBallIds[0]) && !hit.has(otherBallIds[1])) msg = 'Hic topa degmedi!';
-      else msg = 'Yalnizca bir topa degdi!';
+      let msg = I18n.t('miss');
+      if (!hit.has(otherBallIds[0]) && !hit.has(otherBallIds[1])) msg = I18n.t('noBallHit');
+      else msg = I18n.t('oneBallHit');
       switchTurn(gameState);
-      return { scored: false, keepTurn: false, message: msg + ' Sira → Player ' + currentPlayer };
+      return { scored: false, keepTurn: false, message: msg + ' ' + I18n.t('turnTo', { n: currentPlayer }) };
     }
   }
 

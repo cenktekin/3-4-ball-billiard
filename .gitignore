@@ -37,3 +37,4 @@ build/
 *.jks
 credentials.json
 service-account*.json
+.omo/

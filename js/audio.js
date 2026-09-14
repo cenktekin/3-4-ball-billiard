@@ -97,7 +97,7 @@ const Audio = (() => {
   }
 
   function playShot(power) {
-    const p = Math.min(1, power / Physics.MAX_POWER);
+    const p = Math.min(1, power / Physics.CONFIG.MAX_POWER);
     const vol = 0.1 + p * 0.2;
     playNoise(0.04, vol * 0.6, 3000);
     playTone(400 + p * 200, 0.03, 'sine', vol * 0.4, 200);

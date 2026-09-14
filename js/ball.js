@@ -21,10 +21,14 @@ const Ball = (() => {
       this.vy = 0;
       this.color = color;
       this.id = id;
-      this.radius = Physics.BALL_RADIUS;
+      this.radius = Physics.CONFIG.BALL_RADIUS;
       this.active = true;
       this.spinX = 0;
       this.spinY = 0;
+      this.dirX = 1;
+      this.dirY = 0;
+      this.contacted = false;
+      this.rollAngle = 0;
       this.number = getNumber(id);
       this.stripe = getStripeColor(id);
       this.trailTimer = 0;
@@ -116,10 +120,34 @@ const Ball = (() => {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fill();
 
-      if (this.id === 'white' || this.id === 'cue' || this.id === 'yellow') {
+      this.drawRollingMark(ctx, r);
+    }
+
+    drawRollingMark(ctx, r) {
+      const roll = this.rollAngle || 0;
+      const height = Math.sin(roll);
+      if (height <= -0.35) return;
+
+      const along = Math.cos(roll) * r * 0.45;
+      const mx = this.x + this.dirX * along;
+      const my = this.y + this.dirY * along;
+      const scale = 0.55 + 0.45 * Math.max(0, height);
+      const alpha = 0.35 + 0.65 * Math.max(0, height);
+
+      if (this.number) {
         ctx.beginPath();
-        ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(200,0,0,0.15)';
+        ctx.arc(mx, my, r * 0.42 * scale, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.fill();
+        ctx.fillStyle = `rgba(20,20,20,${alpha})`;
+        ctx.font = `bold ${Math.max(6, r * 0.55 * scale)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.number, mx, my + 0.5);
+      } else if (this.id === 'white' || this.id === 'cue' || this.id === 'yellow') {
+        ctx.beginPath();
+        ctx.arc(mx, my, r * 0.16 * scale, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(200,0,0,${alpha * 0.8})`;
         ctx.fill();
       }
     }

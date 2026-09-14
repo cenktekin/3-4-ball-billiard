@@ -18,15 +18,14 @@ const Table = (() => {
   };
   let currentTheme = 'green';
 
-  let surfacePattern = null;
-  let patternCanvas = null;
+  const patternCache = {};
 
-  function createSurfacePattern(ctx, themeColor) {
-    if (!patternCanvas) {
-      patternCanvas = document.createElement('canvas');
-      patternCanvas.width = 64;
-      patternCanvas.height = 64;
-    }
+  function createSurfacePattern(ctx, themeName, themeColor) {
+    if (patternCache[themeName]) return patternCache[themeName];
+
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = 64;
+    patternCanvas.height = 64;
     const pctx = patternCanvas.getContext('2d');
     pctx.fillStyle = themeColor;
     pctx.fillRect(0, 0, 64, 64);
@@ -53,7 +52,8 @@ const Table = (() => {
       pctx.fillRect(x, y, 1, 1);
     }
 
-    return ctx.createPattern(patternCanvas, 'repeat');
+    patternCache[themeName] = ctx.createPattern(patternCanvas, 'repeat');
+    return patternCache[themeName];
   }
 
   function setTheme(themeName) {
@@ -97,8 +97,7 @@ const Table = (() => {
     ctx.fillRect(TABLE_X, TABLE_Y, CUSHION_SIZE, TABLE_HEIGHT);
     ctx.fillRect(TABLE_X + TABLE_WIDTH - CUSHION_SIZE, TABLE_Y, CUSHION_SIZE, TABLE_HEIGHT);
 
-    surfacePattern = createSurfacePattern(ctx, theme.surface);
-    ctx.fillStyle = surfacePattern;
+    ctx.fillStyle = createSurfacePattern(ctx, currentTheme, theme.surface);
     ctx.fillRect(TABLE_X + CUSHION_SIZE, TABLE_Y + CUSHION_SIZE,
       TABLE_WIDTH - CUSHION_SIZE * 2, TABLE_HEIGHT - CUSHION_SIZE * 2);
 
@@ -130,13 +129,13 @@ const Table = (() => {
     const playableTop = TABLE_Y + CUSHION_SIZE;
     const playableBottom = TABLE_Y + TABLE_HEIGHT - CUSHION_SIZE;
 
-    for (let i = 1; i <= 6; i++) {
-      const x = playableLeft + (playableRight - playableLeft) * (i / 7);
+    for (const i of [1, 2, 3, 5, 6, 7]) {
+      const x = playableLeft + (playableRight - playableLeft) * (i / 8);
       drawDiamond(ctx, x, topY, diamondSize);
       drawDiamond(ctx, x, bottomY, diamondSize);
     }
-    for (let i = 1; i <= 4; i++) {
-      const y = playableTop + (playableBottom - playableTop) * (i / 5);
+    for (const i of [1, 2, 3]) {
+      const y = playableTop + (playableBottom - playableTop) * (i / 4);
       drawDiamond(ctx, leftX, y, diamondSize);
       drawDiamond(ctx, rightX, y, diamondSize);
     }

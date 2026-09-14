@@ -14,10 +14,12 @@ const Renderer = (() => {
   function resize() {
     dpr = window.devicePixelRatio || 1;
     const size = Table.getCanvasSize();
+    // Backing store stays at logical size * dpr; the CSS layer (max-width:100%)
+    // scales the element to the viewport while preserving the 900x620 aspect
+    // ratio. Input mapping (Input.updateMousePos) is already rect-relative, so
+    // logical coordinates remain stable under any CSS scaling.
     canvas.width = size.width * dpr;
     canvas.height = size.height * dpr;
-    canvas.style.width = size.width + 'px';
-    canvas.style.height = size.height + 'px';
     ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
   }
@@ -60,12 +62,26 @@ const Renderer = (() => {
       ball.draw(ctx);
     }
 
+    if (gameState.phase === 'moving' && GameFlow.getShotAnimTime() < 120 && gameState.cueBall) {
+      UI.drawCueStickFollowthrough(ctx, gameState.cueBall, gameState.aimAngle, GameFlow.getShotAnimTime());
+    }
+
     if (gameState.phase === 'selecting') {
       renderCueBallSelection(gameState);
     }
 
+    let aimGuidance = null;
+    if ((gameState.phase === 'aiming' || gameState.phase === 'charging') &&
+        gameState.cueBall && gameState.cueBall.active) {
+      aimGuidance = UI.getShotGuidance(
+        gameState.cueBall, gameState.aimAngle,
+        gameState.shotPower > 2 ? gameState.shotPower : 12,
+        gameState.spinX, gameState.spinY, gameState.balls, Table.getBounds()
+      );
+    }
+
     if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
-      renderAiming(gameState);
+      renderAiming(gameState, aimGuidance);
     }
 
     if (isReplaying && replayTrajectories) {
@@ -104,7 +120,7 @@ const Renderer = (() => {
       const target = gameState.balls.find(b =>
         b.active && b.id !== cueId && b.id !== 'white'
       );
-      UI.drawPreviewPanel(ctx, gameState.cueBall, target, gameState.mode);
+      UI.drawPreviewPanel(ctx, gameState.cueBall, target, gameState.mode, aimGuidance);
     }
 
     if (messageTimer > 0) {
@@ -117,7 +133,7 @@ const Renderer = (() => {
     }
 
     if (isChallengeMode && challengeResultTimer > 0) {
-      UI.drawChallengeResult(ctx, Challenge.validateChallenge(gameState));
+      UI.drawChallengeResult(ctx, GameFlow.getLastChallengeResult());
     }
 
     ctx.restore();
@@ -138,7 +154,7 @@ const Renderer = (() => {
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Select your cue ball (White or Yellow)',
+    ctx.fillText(I18n.t('selectCueBall'),
       Table.TABLE_X + Table.TABLE_WIDTH / 2,
       Table.TABLE_Y - 10);
 
@@ -155,19 +171,20 @@ const Renderer = (() => {
     }
   }
 
-  function renderAiming(gameState) {
+  function renderAiming(gameState, guidance) {
     const bounds = Table.getBounds();
-    UI.drawAimLine(ctx, gameState.cueBall, gameState.aimAngle, gameState.balls, bounds, gameState.spinX, gameState.spinY);
+    UI.drawAimLine(ctx, gameState.cueBall, gameState.aimAngle, gameState.balls, bounds, gameState.spinX, gameState.spinY, guidance);
     if (UI.isTrajectoryMode()) {
       const simPower = gameState.shotPower > 2 ? gameState.shotPower : 12;
       UI.drawTrajectoryPreview(ctx, gameState.cueBall, gameState.aimAngle,
         simPower, gameState.spinX, gameState.spinY,
-        gameState.balls, bounds);
+        gameState.balls, bounds, guidance);
     }
+    UI.drawRestMarkers(ctx, guidance);
     UI.drawPowerRing(ctx, gameState.cueBall, gameState.shotPower);
     UI.drawPowerBar(ctx, gameState.shotPower, gameState.isCharging);
     UI.drawCueStick(ctx, gameState.cueBall, gameState.aimAngle, gameState.shotPower, gameState.isCharging);
-    UI.drawStrikeIndicator(ctx, gameState.cueBall, gameState.spinX, gameState.spinY);
+    UI.drawStrikeIndicator(ctx, gameState.cueBall, gameState.spinX, gameState.spinY, gameState);
 
     const spinLabel = UI.getSpinLabel(gameState.spinX, gameState.spinY);
     if (spinLabel && gameState.cueBall) {
@@ -176,6 +193,14 @@ const Renderer = (() => {
       ctx.textAlign = 'center';
       ctx.fillText(spinLabel, gameState.cueBall.x, gameState.cueBall.y + gameState.cueBall.radius + 22);
     }
+
+    const mag = Math.max(Math.abs(gameState.spinX), Math.abs(gameState.spinY));
+    if (mag > 0.01 && gameState.cueBall) {
+      ctx.fillStyle = '#FFD700';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(I18n.t('spinMag', { pct: Math.round(mag * 100) }), gameState.cueBall.x, gameState.cueBall.y + gameState.cueBall.radius + 34);
+    }
   }
 
   function renderReplay(gameState, replayTrajectories) {
@@ -183,7 +208,7 @@ const Renderer = (() => {
     ctx.fillStyle = 'rgba(0,200,255,0.8)';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, canvasH - 40);
+    ctx.fillText(I18n.t('replayOn'), 890, canvasH - 40);
     UI.drawFullTrajectory(ctx, replayTrajectories, gameState.cueBall,
       gameState.aimAngle, gameState.spinX, gameState.spinY);
   }
@@ -194,22 +219,22 @@ const Renderer = (() => {
       ctx.fillStyle = 'rgba(0,200,255,0.8)';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText('[SHIFT+R] REPLAY AKTIF', 890, canvasH - 40);
+      ctx.fillText(I18n.t('replayOn'), 890, canvasH - 40);
     } else if (gameState.phase === 'aiming' || gameState.phase === 'charging') {
       if (UI.isTrajectoryMode()) {
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('[G] ROTA ACIK', 890, canvasH - 55);
+        ctx.fillText(I18n.t('trajectoryOn'), 890, canvasH - 55);
         ctx.fillStyle = 'rgba(255,255,255,0.35)';
         ctx.font = '10px sans-serif';
-        ctx.fillText('Beyaz topun rotasi', 890, canvasH - 41);
-        ctx.fillText('Yesil nokta = carpma', 890, canvasH - 27);
+        ctx.fillText(I18n.t('cueTrajectory'), 890, canvasH - 41);
+        ctx.fillText(I18n.t('hitPoint'), 890, canvasH - 27);
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.3)';
         ctx.font = 'bold 11px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('[G] ROTA KAPALI', 890, canvasH - 40);
+        ctx.fillText(I18n.t('trajectoryOff'), 890, canvasH - 40);
       }
     }
   }

@@ -53,7 +53,8 @@ const Mode4Ball = (() => {
       switchTurn(gameState);
       return {
         scored: false, points: 0, cushionBonus: false,
-        message: objectBallsHit === 0 ? 'MISS! Sira → Player ' + currentPlayer : 'TEK TOP — puan yok! Sira → Player ' + currentPlayer
+        message: (objectBallsHit === 0 ? I18n.t('miss') : I18n.t('singleBallNoPoints')) +
+          ' ' + I18n.t('turnTo', { n: currentPlayer })
       };
     }
 
@@ -77,15 +78,15 @@ const Mode4Ball = (() => {
     gameState.count++;
 
     let detail = '';
-    if (objectBallsHit === 3) detail = 'UC TOP!';
-    else if (red1Hit && red2Hit) detail = 'IKI KIRMIZI';
-    else detail = 'KIRMIZI + RAKIP';
+    if (objectBallsHit === 3) detail = I18n.t('threeBalls');
+    else if (red1Hit && red2Hit) detail = I18n.t('twoReds');
+    else detail = I18n.t('redAndOpponent');
 
-    if (cushionFirst) detail += ' + BANT x2!';
+    if (cushionFirst) detail += I18n.t('cushionDouble');
 
     return {
       scored: true, points: points, cushionBonus: cushionFirst,
-      message: detail + '  +' + points + ' puan'
+      message: detail + '  ' + I18n.t('pointsEarned', { n: points })
     };
   }
 

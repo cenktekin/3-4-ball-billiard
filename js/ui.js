@@ -1,65 +1,84 @@
 const UI = (() => {
-  const chalkParticles = [];
-  let chalkActive = false;
-  let chalkTimer = 0;
   let trajectoryMode = true;
+  let trainingMode = false;
 
-  const confettiParticles = [];
-  let confettiActive = false;
+  // Physics-derived shot guidance (Todo 6): one cached surface on the shared
+  // simulation API so preview, rest markers, and HUD consume the same output.
+  let guidanceCacheKey = null;
+  let guidanceCacheResult = null;
 
-  function triggerConfetti() {
-    confettiActive = true;
-    confettiParticles.length = 0;
-    const colors = ['#FFD700', '#4CAF50', '#FF5722', '#2196F3', '#E91E63', '#9C27B0'];
-    for (let i = 0; i < 80; i++) {
-      confettiParticles.push({
-        x: 450 + (Math.random() - 0.5) * 100,
-        y: 290 + (Math.random() - 0.5) * 60,
-        vx: (Math.random() - 0.5) * 12,
-        vy: -Math.random() * 10 - 3,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        size: Math.random() * 6 + 3,
-        rot: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 0.3,
-        life: 1
-      });
+  function getShotGuidance(cueBall, angle, power, spinX, spinY, balls, tableBounds) {
+    if (!cueBall || !cueBall.active) return null;
+    const simPower = power > 2 ? power : 12;
+    const keyParts = [
+      cueBall.x, cueBall.y, angle, simPower, spinX, spinY,
+      tableBounds.x, tableBounds.y, tableBounds.width, tableBounds.height
+    ];
+    for (const b of balls) {
+      if (b.active) keyParts.push(b.id, b.x, b.y, b.radius);
     }
+    const key = keyParts.join('|');
+    let result;
+    if (key === guidanceCacheKey) {
+      result = guidanceCacheResult;
+    } else {
+      result = Physics.simulateTrajectory(
+        cueBall.x, cueBall.y, angle, simPower, spinX, spinY,
+        tableBounds, balls
+      );
+      guidanceCacheKey = key;
+      guidanceCacheResult = result;
+    }
+    const pts = result.cuePoints;
+    if (!pts || pts.length < 2) return null;
+
+    let distance = 0;
+    for (let i = 1; i < pts.length; i++) {
+      distance += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    }
+
+    const hitPt = pts.find(p => p.type === 'ball_hit');
+    const cushionOrder = pts.filter(p => p.type === 'cushion');
+    const cueRest = pts[pts.length - 1];
+    const targetRest = result.hitPoints && result.hitPoints.length > 0
+      ? result.hitPoints[result.hitPoints.length - 1]
+      : null;
+
+    return {
+      distance,
+      firstContact: hitPt ? { x: hitPt.x, y: hitPt.y, ballId: hitPt.ballId } : null,
+      cushionOrder,
+      cueRest,
+      targetRest,
+      hitBallId: result.hitBallId,
+      cuePoints: pts,
+      hitPoints: result.hitPoints
+    };
   }
 
-  function updateConfetti(dt) {
-    if (!confettiActive) return;
-    let anyAlive = false;
-    for (const p of confettiParticles) {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.15;
-      p.rot += p.rotSpeed;
-      p.life -= 0.008;
-      if (p.life > 0) anyAlive = true;
-    }
-    if (!anyAlive) confettiActive = false;
-  }
-
-  function drawConfetti(ctx) {
-    if (!confettiActive) return;
-    for (const p of confettiParticles) {
-      if (p.life <= 0) continue;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = p.life;
-      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
-      ctx.restore();
-    }
+  function getBallName(ballId) {
+    if (ballId === 'white') return I18n.t('white');
+    if (ballId === 'yellow') return I18n.t('yellow');
+    return String(ballId).toUpperCase();
   }
 
   function isTrajectoryMode() { return trajectoryMode; }
   function toggleTrajectoryMode() { trajectoryMode = !trajectoryMode; }
 
-  function drawStrikeIndicator(ctx, cueBall, spinX, spinY) {
+  function isTrainingMode() { return trainingMode; }
+  function toggleTrainingMode() { trainingMode = !trainingMode; }
+  function setTrainingMode(v) { trainingMode = !!v; }
+
+  function drawStrikeIndicator(ctx, cueBall, spinX, spinY, gameState) {
     if (!cueBall || !cueBall.active) return;
     const r = cueBall.radius;
+
+    let suggested = null;
+    if (trainingMode && gameState && gameState.cueBall && gameState.balls) {
+      suggested = AI.getSuggestedSpinForAngle(
+        gameState.cueBall, gameState.aimAngle, gameState.balls, gameState.mode
+      );
+    }
 
     ctx.save();
     ctx.beginPath();
@@ -87,14 +106,17 @@ const UI = (() => {
       const zx = cueBall.x + z.l * r * 0.55;
       const zy = cueBall.y + z.t * r * 0.55;
       const isSelected = (
-        Math.abs(spinX - z.l * 0.7) < 0.25 &&
-        Math.abs(spinY - z.t * 0.7) < 0.25
+        Math.abs(spinX - z.l * 0.7) < 0.35 &&
+        Math.abs(spinY - z.t * 0.7) < 0.35
       );
       if (isSelected) {
         ctx.beginPath();
         ctx.arc(zx, zy, zoneR, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,100,100,0.7)';
+        ctx.fillStyle = 'rgba(255,100,100,0.85)';
         ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
       ctx.beginPath();
       ctx.arc(zx, zy, zoneR * 0.6, 0, Math.PI * 2);
@@ -119,6 +141,27 @@ const UI = (() => {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
+    if (suggested && (Math.abs(suggested.spinX) > 0.15 || Math.abs(suggested.spinY) > 0.15)) {
+      const gx = cueBall.x + suggested.spinX * r * 0.8;
+      const gy = cueBall.y + suggested.spinY * r * 0.8;
+      ctx.beginPath();
+      ctx.arc(gx, gy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#00E676';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const sugLabel = getSpinLabel(suggested.spinX, suggested.spinY);
+      if (sugLabel) {
+        ctx.fillStyle = '#00E676';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(I18n.t('suggestionLabel') + ' ' + sugLabel, cueBall.x, cueBall.y + r + 34);
+      }
+    }
+
     const spinLabel = getSpinLabel(spinX, spinY);
     if (spinLabel) {
       ctx.fillStyle = '#FFD700';
@@ -141,7 +184,7 @@ const UI = (() => {
     return parts.join('+');
   }
 
-  function drawAimLine(ctx, cueBall, angle, balls, tableBounds, spinX, spinY) {
+  function drawAimLine(ctx, cueBall, angle, balls, tableBounds, spinX, spinY, guidance) {
     if (!cueBall || !cueBall.active) return;
 
     const startX = cueBall.x;
@@ -173,21 +216,64 @@ const UI = (() => {
       }
     }
 
-    if (trajectoryMode) return;
+    const ghost = trajectoryMode;
+    const extendLen = hitBall ? hitT : 300;
 
     ctx.save();
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = ghost ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.15)';
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 6]);
     ctx.beginPath();
     ctx.moveTo(startX, startY);
-    const extendLen = hitBall ? hitT : 300;
     ctx.lineTo(startX + dirX * extendLen, startY + dirY * extendLen);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (hitBall) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    for (let d = 100; d < extendLen; d += 100) {
+      const tx = startX + dirX * d;
+      const ty = startY + dirY * d;
+      ctx.beginPath();
+      ctx.moveTo(tx - dirY * 3, ty + dirX * 3);
+      ctx.lineTo(tx + dirY * 3, ty - dirX * 3);
+      ctx.stroke();
+    }
+
+    // swerve direction must match Physics: accel = (-dirY, dirX) * spinX
+    if (Math.abs(spinX) > 0.2) {
+      if (guidance && guidance.cuePoints && guidance.cuePoints.length > 2) {
+        // physics-derived swerve samples along the simulated cue path
+        const pts = guidance.cuePoints;
+        const endIdx = pts.findIndex(p => p.type === 'ball_hit');
+        const pathPts = endIdx > 0 ? pts.slice(0, endIdx) : pts;
+        if (pathPts.length > 2) {
+          for (let i = 1; i <= 3; i++) {
+            const frac = i / 4;
+            const idx = Math.min(pathPts.length - 1, Math.floor(frac * (pathPts.length - 1)));
+            const p = pathPts[idx];
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,120,120,${0.45 + i * 0.15})`;
+            ctx.fill();
+          }
+        }
+      } else {
+        const offset = spinX * 15;
+        for (let i = 1; i <= 3; i++) {
+          const t = (extendLen * i) / 4;
+          const px = startX + dirX * t - dirY * offset * (i / 3);
+          const py = startY + dirY * t + dirX * offset * (i / 3);
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,120,120,${0.45 + i * 0.15})`;
+          ctx.fill();
+        }
+      }
+    }
+
+    if (hitBall && !ghost) {
       ctx.beginPath();
       ctx.moveTo(startX, startY);
       ctx.lineTo(hitX, hitY);
@@ -225,14 +311,13 @@ const UI = (() => {
     ctx.restore();
   }
 
-  function drawTrajectoryPreview(ctx, cueBall, angle, power, spinX, spinY, balls, tableBounds) {
+  function drawTrajectoryPreview(ctx, cueBall, angle, power, spinX, spinY, balls, tableBounds, guidance) {
     if (!cueBall || !cueBall.active) return;
-    const result = Physics.simulateTrajectory(
-      cueBall.x, cueBall.y, angle, power, spinX, spinY,
-      tableBounds, balls, 300
-    );
-    const pts = result.cuePoints;
-    const hitPts = result.hitPoints;
+
+    const g = guidance || getShotGuidance(cueBall, angle, power, spinX, spinY, balls, tableBounds);
+    if (!g) return;
+    const pts = g.cuePoints;
+    const hitPts = g.hitPoints;
     if (!pts || pts.length < 2) return;
 
     ctx.save();
@@ -308,15 +393,25 @@ const UI = (() => {
       ctx.fillStyle = 'rgba(255,215,0,0.6)';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('CARPMA', hitX, hitY - 18);
+      ctx.fillText(I18n.t('impact'), hitX, hitY - 18);
     }
 
+    let cushionCount = 0;
     for (const pt of pts) {
       if (pt.type === 'cushion') {
+        cushionCount++;
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(100,180,255,0.7)';
+        ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(100,180,255,0.2)';
         ctx.fill();
+        ctx.strokeStyle = 'rgba(100,180,255,0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(cushionCount), pt.x, pt.y);
       }
     }
     
@@ -339,7 +434,7 @@ const UI = (() => {
     const power = 12;
     const result = Physics.simulateTrajectory(
       cueBall.x, cueBall.y, angle, power, spinX, spinY,
-      bounds, [], 200
+      bounds, []
     );
     const pts = result.cuePoints;
     if (!pts || pts.length < 2) return;
@@ -485,7 +580,7 @@ const UI = (() => {
 
   function drawPowerRing(ctx, cueBall, power) {
     if (!cueBall || !cueBall.active || power <= 0) return;
-    const ratio = power / Physics.MAX_POWER;
+    const ratio = power / Physics.CONFIG.MAX_POWER;
     const radius = cueBall.radius + 8;
 
     let color;
@@ -510,7 +605,7 @@ const UI = (() => {
   function drawPowerBar(ctx, power, isCharging) {
     if (power <= 0 && !isCharging) return;
 
-    const ratio = power / Physics.MAX_POWER;
+    const ratio = power / Physics.CONFIG.MAX_POWER;
     const barX = 15;
     const barY = Table.TABLE_Y + 30;
     const barW = 18;
@@ -561,27 +656,16 @@ const UI = (() => {
     }
   }
 
-  function drawCueStick(ctx, cueBall, angle, power, isCharging) {
-    if (!cueBall || !cueBall.active) return;
-
+  function drawStickAt(ctx, cueBall, angle, tipDist, alpha) {
     const stickLength = 120;
     const stickWidth = 4;
     const tipLength = 15;
-    const pullBack = isCharging ? (power / Physics.MAX_POWER) * 50 : 0;
 
-    const startX = cueBall.x - Math.cos(angle) * (cueBall.radius + 3 + pullBack);
-    const startY = cueBall.y - Math.sin(angle) * (cueBall.radius + 3 + pullBack);
-
-    const endX = startX - Math.cos(angle) * stickLength;
-    const endY = startY - Math.sin(angle) * stickLength;
+    const startX = cueBall.x - Math.cos(angle) * tipDist;
+    const startY = cueBall.y - Math.sin(angle) * tipDist;
 
     ctx.save();
-
-    if (isCharging && power > 0) {
-      ctx.shadowColor = 'rgba(255,200,100,0.3)';
-      ctx.shadowBlur = 10 + (power / Physics.MAX_POWER) * 15;
-    }
-
+    ctx.globalAlpha = alpha;
     ctx.translate(startX, startY);
     ctx.rotate(angle + Math.PI);
 
@@ -614,7 +698,21 @@ const UI = (() => {
     ctx.fillStyle = '#654321';
     ctx.fill();
 
-    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function drawCueStick(ctx, cueBall, angle, power, isCharging) {
+    if (!cueBall || !cueBall.active) return;
+
+    const pullBack = isCharging ? (power / Physics.CONFIG.MAX_POWER) * 50 : 0;
+    const tipDist = cueBall.radius + 3 + pullBack;
+
+    ctx.save();
+    if (isCharging && power > 0) {
+      ctx.shadowColor = 'rgba(255,200,100,0.3)';
+      ctx.shadowBlur = 10 + (power / Physics.CONFIG.MAX_POWER) * 15;
+    }
+    drawStickAt(ctx, cueBall, angle, tipDist, 1);
     ctx.restore();
 
     const contactX = cueBall.x - Math.cos(angle) * cueBall.radius;
@@ -625,53 +723,61 @@ const UI = (() => {
     ctx.fill();
   }
 
-  function triggerChalk(x, y) {
-    chalkActive = true;
-    chalkTimer = 300;
-    chalkParticles.length = 0;
-    for (let i = 0; i < 12; i++) {
-      chalkParticles.push({
-        x: x,
-        y: y,
-        vx: (Math.random() - 0.5) * 3,
-        vy: (Math.random() - 0.5) * 3 - 1,
-        life: 1,
-        size: Math.random() * 3 + 1
-      });
-    }
+  function drawCueStickFollowthrough(ctx, cueBall, angle, animTimeMs) {
+    if (!cueBall || !cueBall.active) return;
+    const progress = Math.min(animTimeMs / 120, 1);
+    const tipDist = cueBall.radius + 3 - progress * 16;
+    drawStickAt(ctx, cueBall, angle, tipDist, 1 - progress);
   }
-
-  function updateChalk(dt) {
-    if (!chalkActive) return;
-    chalkTimer -= dt;
-    if (chalkTimer <= 0) {
-      chalkActive = false;
-      return;
-    }
-    for (const p of chalkParticles) {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.05;
-      p.life -= 0.03;
-    }
-  }
-
-  function drawChalk(ctx) {
-    if (!chalkActive) return;
-    for (const p of chalkParticles) {
-      if (p.life <= 0) continue;
+  function drawRestMarkers(ctx, guidance) {
+    if (!guidance) return;
+    ctx.save();
+    if (guidance.cueRest) {
+      const p = guidance.cueRest;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(135,206,235,${p.life * 0.7})`;
+      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
       ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(I18n.t('restCue'), p.x, p.y - 12);
     }
+    if (guidance.targetRest) {
+      const p = guidance.targetRest;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,180,50,0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFB432';
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,180,50,0.9)';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(I18n.t('restTarget'), p.x, p.y - 11);
+    }
+    ctx.restore();
   }
 
-  function drawPreviewPanel(ctx, cueBall, targetBall, mode) {
+  function drawPreviewPanel(ctx, cueBall, targetBall, mode, guidance) {
     const px = 10;
     const py = Table.TABLE_Y + Table.TABLE_HEIGHT + Table.FRAME_SIZE + 5;
-    const pw = 180;
-    const ph = 55;
+    const pw = 190;
+    const ph = guidance ? 92 : 55;
 
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(px, py, pw, ph);
@@ -682,7 +788,7 @@ const UI = (() => {
     ctx.fillStyle = '#fff';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('CUE BALL', px + 35, py + 18);
+    ctx.fillText(I18n.t('cueBallLabel'), px + 35, py + 18);
 
     if (cueBall && cueBall.active) {
       ctx.beginPath();
@@ -704,7 +810,19 @@ const UI = (() => {
       ctx.stroke();
 
       ctx.fillStyle = '#fff';
-      ctx.fillText('TARGET', px + 35, py + 44);
+      ctx.fillText(I18n.t('target'), px + 35, py + 44);
+    }
+
+    if (guidance) {
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(I18n.t('predictedDistance', { d: Math.round(guidance.distance) }), px + 8, py + 62);
+      ctx.fillStyle = '#7EC8FF';
+      ctx.fillText(I18n.t('cushionCount', { n: guidance.cushionOrder.length }), px + 8, py + 76);
+      if (guidance.firstContact) {
+        ctx.fillStyle = '#FFB432';
+        ctx.fillText(I18n.t('firstContact', { ball: getBallName(guidance.firstContact.ballId) }), px + 8, py + 90);
+      }
     }
   }
 
@@ -720,25 +838,25 @@ const UI = (() => {
 
       ctx.textAlign = 'left';
       ctx.fillStyle = cur === 1 ? '#FFD700' : '#aaa';
-      ctx.fillText('P1 (Beyaz): ' + gameState.p1Score, 20, y);
+      ctx.fillText(I18n.t('p1') + ' (' + I18n.t('white') + '): ' + gameState.p1Score, 20, y);
 
       ctx.textAlign = 'right';
       ctx.fillStyle = cur === 2 ? '#FFD700' : '#aaa';
-      ctx.fillText('P2 (Sari): ' + gameState.p2Score, canvasW - 20, y);
+      ctx.fillText(I18n.t('p2') + ' (' + I18n.t('yellow') + '): ' + gameState.p2Score, canvasW - 20, y);
 
       ctx.textAlign = 'center';
       ctx.fillStyle = '#FFD700';
       ctx.font = '12px sans-serif';
-      ctx.fillText('SIRA: Player ' + cur + '  (' + (curId === 'white' ? 'Beyaz' : 'Sari') + ')', canvasW / 2, y);
+      ctx.fillText(I18n.t('turn') + ': Player ' + cur + '  (' + I18n.t(curId === 'white' ? 'white' : 'yellow') + ')', canvasW / 2, y);
 
       ctx.font = '11px sans-serif';
       ctx.fillStyle = '#888';
-      ctx.fillText('HEDEF: ' + Mode4Ball.getTargetScore() + ' SAYI', canvasW / 2, y + 18);
+      ctx.fillText(I18n.t('target') + ': ' + Mode4Ball.getTargetScore() + ' ' + I18n.t('pointsLabel'), canvasW / 2, y + 18);
 
       if (AI.isEnabled()) {
         ctx.fillStyle = '#4CAF50';
         ctx.font = '11px sans-serif';
-        ctx.fillText(AI.isThinking() ? '[AI DUSUNUYOR...]' : '[EGITIM MODU]', canvasW / 2, y + 32);
+        ctx.fillText(AI.isThinking() ? I18n.t('aiThinking') : I18n.t('aiTraining'), canvasW / 2, y + 32);
       }
 
       if (gameState.isPractice) {
@@ -752,30 +870,30 @@ const UI = (() => {
 
       ctx.textAlign = 'left';
       ctx.fillStyle = cur === 1 ? '#FFD700' : '#aaa';
-      ctx.fillText('P1 (' + (Mode3Ball.getCurrentPlayer() === 1 ? curId : (curId === 'white' ? 'yellow' : 'white')).toUpperCase() + '): ' + gameState.p1Score, 20, y);
+      ctx.fillText(I18n.t('p1') + ' (' + (Mode3Ball.getCurrentPlayer() === 1 ? curId : (curId === 'white' ? 'yellow' : 'white')).toUpperCase() + '): ' + gameState.p1Score, 20, y);
 
       ctx.textAlign = 'right';
       ctx.fillStyle = cur === 2 ? '#FFD700' : '#aaa';
-      ctx.fillText('P2 (' + (Mode3Ball.getCurrentPlayer() === 2 ? curId : (curId === 'white' ? 'yellow' : 'white')).toUpperCase() + '): ' + gameState.p2Score, canvasW - 20, y);
+      ctx.fillText(I18n.t('p2') + ' (' + (Mode3Ball.getCurrentPlayer() === 2 ? curId : (curId === 'white' ? 'yellow' : 'white')).toUpperCase() + '): ' + gameState.p2Score, canvasW - 20, y);
 
       ctx.textAlign = 'center';
       ctx.font = '12px sans-serif';
-      let modeLabel = gameState.mode === '3ball' ? '3-TOP (CAROM)' : '3-TOP (3-BAND)';
+      let modeLabel = gameState.mode === '3ball' ? I18n.t('mode3TopCarom') : I18n.t('mode3TopBand');
       ctx.fillStyle = '#FFD700';
-      ctx.fillText('SIRA: Player ' + cur + '  (' + curId.toUpperCase() + ')', canvasW / 2, y);
+      ctx.fillText(I18n.t('turn') + ': Player ' + cur + '  (' + curId.toUpperCase() + ')', canvasW / 2, y);
 
       ctx.font = '11px sans-serif';
       ctx.fillStyle = '#888';
-      ctx.fillText('HEDEF: ' + Mode3Ball.getTargetScore() + ' SAYI  |  ' + modeLabel, canvasW / 2, y + 18);
+      ctx.fillText(I18n.t('target') + ': ' + Mode3Ball.getTargetScore() + ' ' + I18n.t('pointsLabel') + '  |  ' + modeLabel, canvasW / 2, y + 18);
 
       if (gameState.mode === '3cushion') {
-        ctx.fillText('BANT: ' + gameState.cushionHits + '/3', canvasW / 2, y + 32);
+        ctx.fillText(I18n.t('cushion') + ': ' + gameState.cushionHits + '/3', canvasW / 2, y + 32);
       }
 
       if (AI.isEnabled()) {
         ctx.fillStyle = '#4CAF50';
         ctx.font = '11px sans-serif';
-        ctx.fillText(AI.isThinking() ? '[AI DUSUNUYOR...]' : '[EGITIM MODU]', canvasW / 2, y + 46);
+        ctx.fillText(AI.isThinking() ? I18n.t('aiThinking') : I18n.t('aiTraining'), canvasW / 2, y + 46);
       }
 
       if (gameState.isPractice) {
@@ -806,24 +924,24 @@ const UI = (() => {
       ctx.fillStyle = '#fff';
       ctx.fillText(I18n.t('finalScore'), canvasW / 2, canvasH / 2 + 40);
     } else if (gs && (gs.mode === '4ball' || gs.mode === '3ball' || gs.mode === '3cushion') && gs.winner) {
-      const color = gs.winner === 1 ? 'Beyaz' : 'Sari';
-      ctx.fillText('Player ' + gs.winner + ' KAZANDI!', canvasW / 2, canvasH / 2 - 30);
+      const color = gs.winner === 1 ? I18n.t('white') : I18n.t('yellow');
+      ctx.fillText(I18n.t('playerWins', { n: gs.winner }), canvasW / 2, canvasH / 2 - 30);
       ctx.font = '18px sans-serif';
       ctx.fillStyle = '#fff';
-      ctx.fillText('(' + color + ' top)', canvasW / 2, canvasH / 2 + 5);
+      ctx.fillText(I18n.t('ballColor', { color: color }), canvasW / 2, canvasH / 2 + 5);
       ctx.fillText(gs.p1Score + ' - ' + gs.p2Score, canvasW / 2, canvasH / 2 + 30);
     } else {
-      ctx.fillText(won ? 'KAZANDIN!' : 'KAYBETTIN!', canvasW / 2, canvasH / 2 - 20);
+      ctx.fillText(won ? I18n.t('youWin') : I18n.t('youLose'), canvasW / 2, canvasH / 2 - 20);
       ctx.fillStyle = '#fff';
       ctx.font = '18px sans-serif';
-      ctx.fillText('Score: ' + score, canvasW / 2, canvasH / 2 + 20);
+      ctx.fillText(I18n.t('score') + ': ' + score, canvasW / 2, canvasH / 2 + 20);
     }
 
     ctx.fillStyle = '#aaa';
     ctx.font = '14px sans-serif';
-    ctx.fillText('Click to return to menu', canvasW / 2, canvasH / 2 + 60);
+      ctx.fillText(I18n.t('clickToMenu'), canvasW / 2, canvasH / 2 + 60);
 
-    if (won && gs && gs.winner) triggerConfetti();
+    if (won && gs && gs.winner) UI.triggerConfetti();
   }
 
   function drawTimeAttackTimer(ctx, remaining, total) {
@@ -875,616 +993,14 @@ const UI = (() => {
     ctx.fillText(score + ' ' + I18n.t('points'), 20, 50);
     ctx.restore();
   }
-
-  function drawMenu(ctx, phase) {
-    const canvasW = 900;
-    const canvasH = 620;
-
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-
-    const titleY = 65;
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 32px sans-serif';
-    ctx.textAlign = 'center';
-
-    ctx.shadowColor = 'rgba(255,215,0,0.4)';
-    ctx.shadowBlur = 20;
-    ctx.fillText(I18n.t('title'), canvasW / 2, titleY);
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = '#888';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(I18n.t('subtitle'), canvasW / 2, titleY + 22);
-
-    if (phase === 'targetselect') {
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(I18n.t('selectTarget'), canvasW / 2, 130);
-
-      const buttons = getTargetScoreButtons();
-      for (const btn of buttons) {
-        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillText(btn.label, canvasW / 2, btn.y + btn.h / 2 + 6);
-      }
-
-      ctx.fillStyle = '#888';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(I18n.t('targetReached'), canvasW / 2, 400);
-      ctx.fillText(I18n.t('back'), canvasW / 2, 440);
-    } else if (phase === 'timeselect') {
-      ctx.fillStyle = '#F44336';
-      ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(I18n.t('selectTime'), canvasW / 2, 100);
-
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(I18n.t('timeAttackDesc'), canvasW / 2, 135);
-
-      const buttons = getTimeSelectButtons();
-      for (const btn of buttons) {
-        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
-        ctx.strokeStyle = '#F44336';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillText(btn.label, canvasW / 2, btn.y + btn.h / 2 + 6);
-      }
-
-      ctx.fillStyle = '#888';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(I18n.t('timeAttackGoal'), canvasW / 2, 420);
-      ctx.fillText(I18n.t('back'), canvasW / 2, 455);
-    } else {
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(I18n.t('selectMode'), canvasW / 2, 120);
-
-      const buttons = getMenuButtons();
-      for (const btn of buttons) {
-        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillText(btn.label, canvasW / 2, btn.y + btn.h / 2 + 6);
-      }
-
-      const aiBtn = getAIToggleButton();
-      ctx.fillStyle = aiBtn.active ? 'rgba(76,175,80,0.3)' : 'rgba(255,255,255,0.05)';
-      ctx.fillRect(aiBtn.x, aiBtn.y, aiBtn.w, aiBtn.h);
-      ctx.strokeStyle = aiBtn.active ? '#4CAF50' : '#666';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(aiBtn.x, aiBtn.y, aiBtn.w, aiBtn.h);
-      ctx.fillStyle = aiBtn.active ? '#4CAF50' : '#888';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(aiBtn.active ? 'AI: ' + AI.getDifficultyLabel() : I18n.t('aiOff'), canvasW / 2, aiBtn.y + aiBtn.h / 2 + 5);
-
-      if (aiBtn.active) {
-        const diffBtns = getDiffButtons();
-        const curDiff = AI.getDifficulty();
-        for (const btn of diffBtns) {
-          const isActive = btn.key === curDiff;
-          ctx.fillStyle = isActive ? 'rgba(76,175,80,0.4)' : 'rgba(255,255,255,0.08)';
-          ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
-          ctx.strokeStyle = isActive ? '#4CAF50' : '#555';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
-          ctx.fillStyle = isActive ? '#4CAF50' : '#999';
-          ctx.font = 'bold 11px sans-serif';
-          ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 4);
-        }
-      }
-
-      const practiceBtn = getPracticeButton();
-      ctx.fillStyle = practiceBtn.active ? 'rgba(255,193,7,0.3)' : 'rgba(255,255,255,0.05)';
-      ctx.fillRect(practiceBtn.x, practiceBtn.y, practiceBtn.w, practiceBtn.h);
-      ctx.strokeStyle = practiceBtn.active ? '#FFC107' : '#666';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(practiceBtn.x, practiceBtn.y, practiceBtn.w, practiceBtn.h);
-      ctx.fillStyle = practiceBtn.active ? '#FFC107' : '#888';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(I18n.t('practice') + (practiceBtn.active ? ' ✓' : ''), canvasW / 2, practiceBtn.y + practiceBtn.h / 2 + 5);
-
-      const timeAttackBtn = getTimeAttackButton();
-      ctx.fillStyle = timeAttackBtn.active ? 'rgba(244,67,54,0.3)' : 'rgba(255,255,255,0.05)';
-      ctx.fillRect(timeAttackBtn.x, timeAttackBtn.y, timeAttackBtn.w, timeAttackBtn.h);
-      ctx.strokeStyle = timeAttackBtn.active ? '#F44336' : '#666';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(timeAttackBtn.x, timeAttackBtn.y, timeAttackBtn.w, timeAttackBtn.h);
-      ctx.fillStyle = timeAttackBtn.active ? '#F44336' : '#888';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(I18n.t('timeAttack') + (timeAttackBtn.active ? ' ✓' : ''), canvasW / 2, timeAttackBtn.y + timeAttackBtn.h / 2 + 5);
-
-      const challengeBtn = getChallengeButton();
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      ctx.fillRect(challengeBtn.x, challengeBtn.y, challengeBtn.w, challengeBtn.h);
-      ctx.strokeStyle = '#9C27B0';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(challengeBtn.x, challengeBtn.y, challengeBtn.w, challengeBtn.h);
-      ctx.fillStyle = '#9C27B0';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(I18n.t('challenge'), canvasW / 2, challengeBtn.y + challengeBtn.h / 2 + 5);
-
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
-      ctx.strokeStyle = '#4CAF50';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
-      ctx.fillStyle = '#4CAF50';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(I18n.t('careerStats'), canvasW / 2, STATS_BTN.y + STATS_BTN.h / 2 + 5);
-
-      const themeBtn = getThemeButton();
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(themeBtn.x, themeBtn.y, themeBtn.w, themeBtn.h);
-      ctx.strokeStyle = '#888';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(themeBtn.x, themeBtn.y, themeBtn.w, themeBtn.h);
-      ctx.fillStyle = '#aaa';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText(I18n.t('tableColor') + ': ' + Table.getThemeName(), canvasW / 2, themeBtn.y + themeBtn.h / 2 + 4);
-
-      const soundBtn = getSoundButton();
-      const soundOn = Audio.isEnabled();
-      ctx.fillStyle = soundOn ? 'rgba(76,175,80,0.2)' : 'rgba(255,255,255,0.08)';
-      ctx.fillRect(soundBtn.x, soundBtn.y, soundBtn.w, soundBtn.h);
-      ctx.strokeStyle = soundOn ? '#4CAF50' : '#888';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(soundBtn.x, soundBtn.y, soundBtn.w, soundBtn.h);
-      ctx.fillStyle = soundOn ? '#4CAF50' : '#888';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText(I18n.t('sound') + ': ' + (soundOn ? I18n.t('soundOn') : I18n.t('soundOff')), canvasW / 2, soundBtn.y + soundBtn.h / 2 + 4);
-
-      const langBtn = getLanguageButton();
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(langBtn.x, langBtn.y, langBtn.w, langBtn.h);
-      ctx.strokeStyle = '#888';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(langBtn.x, langBtn.y, langBtn.w, langBtn.h);
-      ctx.fillStyle = '#aaa';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText(I18n.t('language') + ': ' + I18n.getLanguage().toUpperCase(), canvasW / 2, langBtn.y + langBtn.h / 2 + 4);
-
-      ctx.fillStyle = '#888';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(I18n.t('controls'), canvasW / 2, canvasH - 10);
-    }
-  }
-
-  let aiToggleActive = false;
-  let practiceToggleActive = false;
-  let timeAttackToggleActive = false;
-  const DIFF_BTNS = [
-    { label: 'KOLAY', key: 'easy' },
-    { label: 'ORTA', key: 'medium' },
-    { label: 'ZOR', key: 'hard' }
-  ];
-
-  function getAIToggleButton() {
-    const canvasW = 900;
-    return {
-      x: (canvasW - 160) / 2, y: 300, w: 160, h: 28,
-      active: aiToggleActive
-    };
-  }
-
-  function getDiffButtons() {
-    const canvasW = 900;
-    const bw = 80;
-    const startX = (canvasW - bw * 3 - 10) / 2;
-    return DIFF_BTNS.map((d, i) => ({
-      x: startX + i * (bw + 5), y: 334, w: bw, h: 25,
-      label: d.label, key: d.key
-    }));
-  }
-
-  function getDiffClick(mx, my) {
-    for (const btn of getDiffButtons()) {
-      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h)
-        return btn.key;
-    }
-    return null;
-  }
-
-  function toggleAI() {
-    aiToggleActive = !aiToggleActive;
-    return aiToggleActive;
-  }
-
-  function isAIToggled() { return aiToggleActive; }
-
-  function togglePractice() {
-    practiceToggleActive = !practiceToggleActive;
-    return practiceToggleActive;
-  }
-
-  function isPracticeToggled() { return practiceToggleActive; }
-
-  function toggleTimeAttack() {
-    timeAttackToggleActive = !timeAttackToggleActive;
-    return timeAttackToggleActive;
-  }
-
-  function isTimeAttackToggled() { return timeAttackToggleActive; }
-
-  function getPracticeButton() {
-    const canvasW = 900;
-    return {
-      x: (canvasW - 160) / 2, y: 365, w: 160, h: 28,
-      active: practiceToggleActive
-    };
-  }
-
-  function getTimeAttackButton() {
-    const canvasW = 900;
-    return {
-      x: (canvasW - 160) / 2, y: 398, w: 160, h: 28,
-      active: timeAttackToggleActive
-    };
-  }
-
-  function getChallengeButton() {
-    const canvasW = 900;
-    return { x: (canvasW - 160) / 2, y: 431, w: 160, h: 28 };
-  }
-
-  function getChallengeNavButtons() {
-    const canvasW = 900;
-    const btnW = 100;
-    const btnH = 36;
-    const y = 420;
-    return {
-      prev: { x: canvasW / 2 - btnW - 60, y, w: btnW, h: btnH },
-      next: { x: canvasW / 2 + 60, y, w: btnW, h: btnH },
-      play: { x: (canvasW - 140) / 2, y: 470, w: 140, h: 40 }
-    };
-  }
-
-  function getChallengeClick(mx, my) {
-    const btn = getChallengeButton();
-    if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
-      return 'open';
-    }
-    return null;
-  }
-
-  function getChallengeNavClick(mx, my) {
-    const nav = getChallengeNavButtons();
-    if (mx >= nav.prev.x && mx <= nav.prev.x + nav.prev.w &&
-        my >= nav.prev.y && my <= nav.prev.y + nav.prev.h) return 'prev';
-    if (mx >= nav.next.x && mx <= nav.next.x + nav.next.w &&
-        my >= nav.next.y && my <= nav.next.y + nav.next.h) return 'next';
-    if (mx >= nav.play.x && mx <= nav.play.x + nav.play.w &&
-        my >= nav.play.y && my <= nav.play.y + nav.play.h) return 'play';
-    return null;
-  }
-
-  function getMenuButtons() {
-    const canvasW = 900;
-    const bw = 280;
-    const bh = 42;
-    const bx = (canvasW - bw) / 2;
-
-    return [
-      { x: bx, y: 140, w: bw, h: bh, label: I18n.t('mode4ball'), mode: '4ball' },
-      { x: bx, y: 192, w: bw, h: bh, label: I18n.t('mode3ball'), mode: '3ball' },
-      { x: bx, y: 244, w: bw, h: bh, label: I18n.t('mode3cushion'), mode: '3cushion' }
-    ];
-  }
-
-  function getTargetScoreButtons() {
-    const canvasW = 900;
-    const bw = 200;
-    const bh = 40;
-    const bx = (canvasW - bw) / 2;
-    const scores = [20, 50, 100, 200];
-
-    return scores.map((s, i) => ({
-      x: bx, y: 180 + i * 55, w: bw, h: bh,
-      label: s + ' ' + I18n.t('points'), score: s
-    }));
-  }
-
-  function getTargetScoreClick(mx, my) {
-    const buttons = getTargetScoreButtons();
-    for (const btn of buttons) {
-      if (mx >= btn.x && mx <= btn.x + btn.w &&
-          my >= btn.y && my <= btn.y + btn.h) {
-        return btn.score;
-      }
-    }
-    return null;
-  }
-
-  function getTimeSelectButtons() {
-    const canvasW = 900;
-    const bw = 200;
-    const bh = 40;
-    const bx = (canvasW - bw) / 2;
-    const times = [
-      { seconds: 60, label: '1 ' + I18n.t('minute') },
-      { seconds: 120, label: '2 ' + I18n.t('minutes') },
-      { seconds: 180, label: '3 ' + I18n.t('minutes') },
-      { seconds: 300, label: '5 ' + I18n.t('minutes') }
-    ];
-
-    return times.map((t, i) => ({
-      x: bx, y: 180 + i * 55, w: bw, h: bh,
-      label: t.label, seconds: t.seconds
-    }));
-  }
-
-  function getTimeSelectClick(mx, my) {
-    const buttons = getTimeSelectButtons();
-    for (const btn of buttons) {
-      if (mx >= btn.x && mx <= btn.x + btn.w &&
-          my >= btn.y && my <= btn.y + btn.h) {
-        return btn.seconds;
-      }
-    }
-    return null;
-  }
-
-  function drawSpinOnBall(ctx, cueBall, spinX, spinY) {
-  }
-
-  const STATS_BTN = { x: 360, y: 475, w: 180, h: 26 };
-  const THEME_BTN = { x: 360, y: 505, w: 180, h: 26 };
-  const SOUND_BTN = { x: 360, y: 535, w: 180, h: 26 };
-  const LANG_BTN = { x: 360, y: 565, w: 180, h: 26 };
-
-  function getStatsButton() { return STATS_BTN; }
-  function getThemeButton() { return THEME_BTN; }
-  function getSoundButton() { return SOUND_BTN; }
-  function getLanguageButton() { return LANG_BTN; }
-
-  function drawStatsMenu(ctx) {
-    const canvasW = 900, canvasH = 620;
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 28px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('KARIYER ISTATISTIKLERI', canvasW / 2, 60);
-
-    const s = Stats.getStats();
-    const wr = Stats.getWinRate();
-    const acc = Stats.getShotAccuracy();
-
-    ctx.fillStyle = '#fff';
-    ctx.font = '16px sans-serif';
-    const lines = [
-      'Toplam Oyun: ' + s.totalGames,
-      'Kazanma: ' + s.totalWins + ' / ' + s.totalGames + '  (' + wr + '%)',
-      'Seri: ' + s.currentStreak + ' (En iyi: ' + s.bestStreak + ')',
-      'Isabet: ' + acc + '%  (' + s.scoringShots + '/' + s.totalShots + ' vurus)',
-      '',
-      '--- MOD BAZINDA ---'
-    ];
-    const modes = [
-      { key: '4ball', label: '4-Top' },
-      { key: '3ball', label: '3-Top (Carom)' },
-      { key: '3cushion', label: '3-Bant' }
-    ];
-    for (const m of modes) {
-      const ms = Stats.getModeStats(m.key);
-      lines.push(m.label + ': ' + ms.played + ' oyun, ' + ms.won + ' galibiyet, En yuksek: ' + ms.bestScore);
-    }
-
-    lines.push('', '--- SON MACLAR ---');
-    if (s.history.length === 0) {
-      lines.push('Henuz mac kaydi yok');
-    } else {
-      const maxShow = Math.min(s.history.length, 8);
-      for (let i = 0; i < maxShow; i++) {
-        const h = s.history[i];
-        const modeLabel = modes.find(m => m.key === h.mode)?.label || h.mode;
-        const date = new Date(h.date).toLocaleDateString('tr-TR');
-        lines.push(date + ' | ' + modeLabel + ' | ' + h.p1Score + '-' + h.p2Score + (h.won ? ' W' : ' L'));
-      }
-    }
-
-    const startY = 95;
-    const lineH = 22;
-    ctx.textAlign = 'left';
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('---')) {
-        ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 13px sans-serif';
-      } else if (lines[i] === '') {
-        continue;
-      } else {
-        ctx.fillStyle = '#ccc';
-        ctx.font = '13px sans-serif';
-      }
-      ctx.fillText(lines[i], 60, startY + i * lineH);
-    }
-
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('← GERI', canvasW / 2, STATS_BTN.y + STATS_BTN.h / 2 + 5);
-  }
-
-  function getStatsButtonClick(mx, my) {
-    return mx >= STATS_BTN.x && mx <= STATS_BTN.x + STATS_BTN.w &&
-           my >= STATS_BTN.y && my <= STATS_BTN.y + STATS_BTN.h;
-  }
-
-  function drawChallengeMenu(ctx) {
-    const canvasW = 900, canvasH = 620;
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-
-    ctx.fillStyle = '#9C27B0';
-    ctx.font = 'bold 28px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(I18n.t('challenge'), canvasW / 2, 55);
-
-    const challenges = Challenge.getChallenges();
-    const current = Challenge.getChallengeIndex();
-    const ch = challenges[current];
-    const lang = I18n.getLanguage();
-
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(ch.name[lang] || ch.name.en, canvasW / 2, 100);
-
-    ctx.fillStyle = '#ccc';
-    ctx.font = '16px sans-serif';
-    ctx.fillText(ch.desc[lang] || ch.desc.en, canvasW / 2, 135);
-
-    ctx.fillStyle = '#888';
-    ctx.font = '14px sans-serif';
-    ctx.fillText((current + 1) + ' / ' + challenges.length, canvasW / 2, 165);
-
-    const previewX = canvasW / 2 - 180;
-    const previewY = 185;
-    const previewW = 360;
-    const previewH = 220;
-
-    ctx.fillStyle = '#0d4d0d';
-    ctx.fillRect(previewX, previewY, previewW, previewH);
-    ctx.strokeStyle = '#5c3a1e';
-    ctx.lineWidth = 8;
-    ctx.strokeRect(previewX, previewY, previewW, previewH);
-
-    const bounds = Table.getBounds();
-    const setup = ch.setup(bounds);
-    if (setup) {
-      const scaleX = (previewW - 20) / bounds.width;
-      const scaleY = (previewH - 20) / bounds.height;
-      const scale = Math.min(scaleX, scaleY) * 0.85;
-      const offsetX = previewX + (previewW - bounds.width * scale) / 2;
-      const offsetY = previewY + (previewH - bounds.height * scale) / 2;
-
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(offsetX, offsetY, bounds.width * scale, bounds.height * scale);
-
-      for (const ball of setup.balls) {
-        const bx = offsetX + (ball.x - bounds.x) * scale;
-        const by = offsetY + (ball.y - bounds.y) * scale;
-        const br = Math.max(ball.radius * scale, 6);
-
-        ctx.beginPath();
-        ctx.arc(bx, by, br + 2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.3)';
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(bx, by, br, 0, Math.PI * 2);
-        ctx.fillStyle = ball.color;
-        ctx.fill();
-        ctx.strokeStyle = '#666';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        if (ball.id === 'white' || ball.id === 'cue') {
-          ctx.beginPath();
-          ctx.arc(bx, by, 2, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,0,0,0.3)';
-          ctx.fill();
-        }
-      }
-
-      const cueBall = setup.cueBall;
-      if (cueBall) {
-        const cx = offsetX + (cueBall.x - bounds.x) * scale;
-        const cy = offsetY + (cueBall.y - bounds.y) * scale;
-        ctx.beginPath();
-        ctx.arc(cx, cy, 12, 0, Math.PI * 2);
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([3, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    }
-
-    const nav = getChallengeNavButtons();
-
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(nav.prev.x, nav.prev.y, nav.prev.w, nav.prev.h);
-    ctx.strokeStyle = '#9C27B0';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(nav.prev.x, nav.prev.y, nav.prev.w, nav.prev.h);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('◄ ' + I18n.t('challengePrev'), nav.prev.x + nav.prev.w / 2, nav.prev.y + nav.prev.h / 2 + 5);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(nav.next.x, nav.next.y, nav.next.w, nav.next.h);
-    ctx.strokeStyle = '#9C27B0';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(nav.next.x, nav.next.y, nav.next.w, nav.next.h);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText(I18n.t('challengeNext') + ' ►', nav.next.x + nav.next.w / 2, nav.next.y + nav.next.h / 2 + 5);
-
-    ctx.fillStyle = 'rgba(156,39,176,0.3)';
-    ctx.fillRect(nav.play.x, nav.play.y, nav.play.w, nav.play.h);
-    ctx.strokeStyle = '#9C27B0';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(nav.play.x, nav.play.y, nav.play.w, nav.play.h);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(I18n.t('challengeReset'), canvasW / 2, nav.play.y + nav.play.h / 2 + 6);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(STATS_BTN.x, STATS_BTN.y, STATS_BTN.w, STATS_BTN.h);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('← GERI', canvasW / 2, STATS_BTN.y + STATS_BTN.h / 2 + 5);
-  }
-
-  function drawChallengeResult(ctx, success) {
-    const canvasW = 900;
-    ctx.save();
-    ctx.fillStyle = success ? 'rgba(76,175,80,0.9)' : 'rgba(244,67,54,0.9)';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(success ? I18n.t('challengeComplete') : I18n.t('challengeFailed'), canvasW / 2, 30);
-    ctx.restore();
-  }
-
   return {
-    drawAimLine, drawPowerRing, drawPowerBar, drawCueStick,
-    triggerChalk, updateChalk, drawChalk,
-    drawPreviewPanel, drawScoreboard, drawGameOver, drawMenu,
-    getMenuButtons, getTargetScoreButtons, getTargetScoreClick,
-    getTimeSelectButtons, getTimeSelectClick,
-    drawSpinOnBall, getSpinLabel,
-    getAIToggleButton, toggleAI, isAIToggled, getDiffClick,
-    getPracticeButton, togglePractice, isPracticeToggled,
-    getTimeAttackButton, toggleTimeAttack, isTimeAttackToggled,
-    getChallengeButton, getChallengeNavButtons, getChallengeClick, getChallengeNavClick,
+    drawAimLine, drawPowerRing, drawPowerBar, drawCueStick, drawCueStickFollowthrough,
+    drawPreviewPanel, drawScoreboard, drawGameOver,
     isTrajectoryMode, toggleTrajectoryMode, drawTrajectoryPreview,
+    isTrainingMode, toggleTrainingMode, setTrainingMode,
     drawStrikeIndicator, drawFullTrajectory,
-    getStatsButton, getThemeButton, getSoundButton, getLanguageButton,
-    drawStatsMenu, getStatsButtonClick,
-    drawChallengeMenu, drawChallengeResult,
-    updateConfetti, drawConfetti, triggerConfetti,
+    getSpinLabel,
+    getShotGuidance, drawRestMarkers,
     drawTimeAttackTimer, drawTimeAttackScore
   };
 })();

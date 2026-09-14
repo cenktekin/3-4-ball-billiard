@@ -21,6 +21,13 @@ const GameFlow = (() => {
   let messageTimer = 0;
   let lastTime = 0;
   let timeAttackDuration = 120;
+  let accumulator = 0;
+  let shotAnimTime = 0;
+  let lastChallengeResult = false;
+  // Fixed physics timestep (in 60fps-frame units): 0.25 = 240 Hz substeps.
+  // Max travel per substep = MAX_POWER * 0.25 = 7.5px < ball radius → no tunneling.
+  const PHYSICS_STEP = 0.25;
+  const MAX_ACCUMULATOR = 4;
 
   function init(gs) {
     gameState = gs;
@@ -39,6 +46,8 @@ const GameFlow = (() => {
   function getIsReplaying() { return isReplaying; }
   function getReplayTrajectories() { return replayTrajectories; }
   function getChallengeResultTimer() { return challengeResultTimer; }
+  function getShotAnimTime() { return shotAnimTime; }
+  function getLastChallengeResult() { return lastChallengeResult; }
 
   function setTimeAttackDuration(seconds) {
     timeAttackDuration = seconds;
@@ -134,6 +143,7 @@ const GameFlow = (() => {
       gameState.spinX, gameState.spinY
     );
     gameState.shotPower = 0;
+    shotAnimTime = 0;
     gameState.phase = 'moving';
   }
 
@@ -141,7 +151,8 @@ const GameFlow = (() => {
     undoState = {
       balls: gameState.balls.map(b => ({
         id: b.id, x: b.x, y: b.y, vx: b.vx, vy: b.vy,
-        spinX: b.spinX, spinY: b.spinY, active: b.active
+        spinX: b.spinX, spinY: b.spinY, active: b.active,
+        dirX: b.dirX, dirY: b.dirY, contacted: b.contacted
       })),
       p1Score: gameState.p1Score,
       p2Score: gameState.p2Score,
@@ -154,7 +165,7 @@ const GameFlow = (() => {
 
   function undoLastShot() {
     if (!undoState) {
-      showMessage('Geri alinacak vurus yok', 1000);
+      showMessage(I18n.t('noUndo'), 1000);
       return;
     }
     if (gameState.phase !== 'aiming') return;
@@ -169,6 +180,9 @@ const GameFlow = (() => {
         ball.spinX = savedBall.spinX;
         ball.spinY = savedBall.spinY;
         ball.active = savedBall.active;
+        ball.dirX = savedBall.dirX !== undefined ? savedBall.dirX : 1;
+        ball.dirY = savedBall.dirY !== undefined ? savedBall.dirY : 0;
+        ball.contacted = !!savedBall.contacted;
       }
     }
 
@@ -193,7 +207,7 @@ const GameFlow = (() => {
     gameState.cushionHits = 0;
 
     undoState = null;
-    showMessage('Son vurus geri alindi', 1500);
+    showMessage(I18n.t('undoDone'), 1500);
     Audio.playTurnSwitch();
   }
 
@@ -206,8 +220,7 @@ const GameFlow = (() => {
       gameState.spinX || 0,
       gameState.spinY || 0,
       gameState.balls,
-      Table.getBounds(),
-      400
+      Table.getBounds()
     );
     if (simResult && simResult.length > 0) {
       lastShotSnapshot = {
@@ -230,11 +243,11 @@ const GameFlow = (() => {
       replayTrajectory = null;
       replayTrajectories = null;
     }
-    showMessage(isReplaying ? '[R] REPLAY ACIK' : '[R] REPLAY KAPALI', 1200);
+    showMessage(isReplaying ? I18n.t('replayToggleOn') : I18n.t('replayToggleOff'), 1200);
   }
 
   function triggerImpactFlash(power) {
-    const intensity = Math.min(power / Physics.MAX_POWER, 1);
+    const intensity = Math.min(power / Physics.CONFIG.MAX_POWER, 1);
     impactFlash = intensity * 0.4;
     if (power > 20) screenShake = Math.min(intensity * 4, 3);
   }
@@ -264,38 +277,61 @@ const GameFlow = (() => {
     gameState.phase = 'aiming';
   }
 
+  function adjustChargingPower(delta) {
+    if (gameState.phase !== 'charging' || !gameState.isCharging) return false;
+    gameState.shotPower = Math.max(0, Math.min(Physics.CONFIG.MAX_POWER, gameState.shotPower + delta));
+    return true;
+  }
+  function cancelCharging() {
+    if (gameState.phase !== 'charging' || !gameState.isCharging) return false;
+    gameState.isCharging = false;
+    gameState.shotPower = 0;
+    gameState.phase = 'aiming';
+    showMessage(I18n.t('shotCancelled'), 1000);
+    return true;
+  }
   function cycleSpeed() {
     speedIndex = (speedIndex + 1) % SPEED_LEVELS.length;
     simSpeed = SPEED_LEVELS[speedIndex];
-    showMessage('SIM HIZI: ' + simSpeed + 'x', 1000);
+    showMessage(I18n.t('simSpeed', { n: simSpeed }), 1000);
   }
 
   function decreaseSpeed() {
     speedIndex = Math.max(0, speedIndex - 1);
     simSpeed = SPEED_LEVELS[speedIndex];
-    showMessage('SIM HIZI: ' + simSpeed + 'x', 1000);
+    showMessage(I18n.t('simSpeed', { n: simSpeed }), 1000);
   }
 
   function increaseSpeed() {
     speedIndex = Math.min(SPEED_LEVELS.length - 1, speedIndex + 1);
     simSpeed = SPEED_LEVELS[speedIndex];
-    showMessage('SIM HIZI: ' + simSpeed + 'x', 1000);
+    showMessage(I18n.t('simSpeed', { n: simSpeed }), 1000);
   }
 
   function update(timestamp) {
-    const rawDt = lastTime ? (timestamp - lastTime) / 16.67 : 1;
+    const rawDt = lastTime ? Math.min((timestamp - lastTime) / 16.67, 3) : 1;
     lastTime = timestamp;
     const dt = rawDt * simSpeed;
 
     if (gameState.phase === 'moving') {
-      updatePhysics(dt);
+      shotAnimTime += dt * 16.67;
+      accumulator = Math.min(accumulator + dt, MAX_ACCUMULATOR);
+      const bounds = Table.getBounds();
+      while (accumulator >= PHYSICS_STEP) {
+        const events = Physics.stepWorld(gameState.balls, bounds, PHYSICS_STEP);
+        processPhysicsEvents(events);
+        accumulator -= PHYSICS_STEP;
+      }
       checkAllStopped();
+    } else {
+      accumulator = 0;
     }
 
     if (gameState.phase === 'charging' && gameState.isCharging) {
+      // yavas sarj: 0.14 => full guc ~3.5sn (onceki 0.3 => ~1.6sn), rota daha kontrollu degisir
       gameState.shotPower = Math.min(
-        gameState.shotPower + 0.3 * dt,
-        Physics.MAX_POWER
+        gameState.shotPower + 0.14 * dt,
+        Physics.CONFIG.MAX_POWER
       );
     }
 
@@ -309,11 +345,17 @@ const GameFlow = (() => {
       } else {
         const ready = AI.update(dt * 16.67);
         if (ready) {
+          saveUndoState();
+          saveShotSnapshot();
           Audio.playShot(gameState.shotPower);
           triggerImpactFlash(gameState.shotPower);
           gameState.startShot();
-          Physics.applyShot(gameState.cueBall, gameState.aimAngle, gameState.shotPower);
+          Physics.applyShot(
+            gameState.cueBall, gameState.aimAngle, gameState.shotPower,
+            gameState.spinX, gameState.spinY
+          );
           gameState.shotPower = 0;
+          shotAnimTime = 0;
           gameState.phase = 'moving';
           aiShotDelay = 600;
         }
@@ -341,47 +383,31 @@ const GameFlow = (() => {
     if (challengeResultTimer > 0) challengeResultTimer -= dt * 16.67;
   }
 
-  function updatePhysics(dt) {
-    const bounds = Table.getBounds();
-    const balls = gameState.balls;
+  function processPhysicsEvents(events) {
     const cueBallId = gameState.selectedBallId || (gameState.mode === '4ball' ? 'white' : 'cue');
 
-    for (const ball of balls) {
-      if (!ball.active) continue;
-      Physics.applyFriction(ball);
-      Physics.applySpinDecay(ball);
-      Physics.moveBall(ball, dt);
-      const cushionHit = Physics.checkCushionCollision(ball, bounds);
-      if (cushionHit) {
-        Audio.playCushionHit();
-        gameState.recordCushionHit();
-        if (gameState.mode === '3cushion') {
-          Audio.playCushionCount(gameState.cushionHits);
-        }
-        if (ball.id === cueBallId) {
-          gameState.recordFirstHit('cushion');
-        }
+    for (const hit of events.cushionHits) {
+      Audio.playCushionHit();
+      gameState.recordCushionHit();
+      if (gameState.mode === '3cushion') {
+        Audio.playCushionCount(gameState.cushionHits);
+      }
+      if (hit.id === cueBallId) {
+        gameState.recordFirstHit('cushion');
       }
     }
 
-    for (let i = 0; i < balls.length; i++) {
-      for (let j = i + 1; j < balls.length; j++) {
-        if (!balls[i].active || !balls[j].active) continue;
-        const collided = Physics.checkBallCollision(balls[i], balls[j]);
-        if (collided) {
-          if (gameState.trySoundPair(balls[i].id, balls[j].id)) {
-            const vel = Math.sqrt(balls[i].vx * balls[i].vx + balls[i].vy * balls[i].vy);
-            Audio.playBallHit(vel);
-            triggerCollisionShake(vel);
-          }
-          if (balls[i].id === cueBallId) {
-            gameState.recordBallHit(balls[j].id);
-            gameState.recordFirstHit('ball');
-          } else if (balls[j].id === cueBallId) {
-            gameState.recordBallHit(balls[i].id);
-            gameState.recordFirstHit('ball');
-          }
-        }
+    for (const hit of events.ballHits) {
+      if (gameState.trySoundPair(hit.aId, hit.bId)) {
+        Audio.playBallHit(hit.speed);
+        triggerCollisionShake(hit.speed);
+      }
+      if (hit.aId === cueBallId) {
+        gameState.recordBallHit(hit.bId);
+        gameState.recordFirstHit('ball');
+      } else if (hit.bId === cueBallId) {
+        gameState.recordBallHit(hit.aId);
+        gameState.recordFirstHit('ball');
       }
     }
   }
@@ -391,6 +417,7 @@ const GameFlow = (() => {
     if (!moving) {
       if (isChallengeMode) {
         const success = Challenge.validateChallenge(gameState);
+        lastChallengeResult = success;
         
         gameState.shotPower = 0;
         gameState.isCharging = false;
@@ -405,9 +432,11 @@ const GameFlow = (() => {
           showMessage(I18n.t('challengeComplete'), 3000);
           Audio.playWin();
           challengeResultTimer = 3000;
+          respawnChallenge(true);
         } else {
           showMessage(I18n.t('challengeFailed'), 2000);
           challengeResultTimer = 2000;
+          respawnChallenge(false);
         }
         
         gameState.ballsHitThisShot.clear();
@@ -429,6 +458,18 @@ const GameFlow = (() => {
         gameState.phase = 'scoring';
         evaluateCurrentShot();
       }
+    }
+  }
+
+  function respawnChallenge(success) {
+    const setup = success ? Challenge.setupChallengeVariant() : Challenge.repeatLastSetup();
+    if (!setup) return;
+    gameState.balls = setup.balls;
+    gameState.cueBall = setup.cueBall;
+    gameState.selectedBallId = setup.cueBall.id;
+    for (const ball of gameState.balls) {
+      ball.initialX = ball.x;
+      ball.initialY = ball.y;
     }
   }
 
@@ -518,9 +559,11 @@ const GameFlow = (() => {
     isChallengeMode: isChallengeModeActive, getSimSpeed,
     getScreenShake, getImpactFlash, getMessageText, getMessageTimer,
     getIsReplaying, getReplayTrajectories, getChallengeResultTimer,
+    getShotAnimTime, getLastChallengeResult,
     setTimeAttackDuration,
     showMessage, startGame, startChallenge, returnToMenu,
     fireShot, undoLastShot, toggleReplay,
+    adjustChargingPower, cancelCharging,
     resetPracticeBalls, cycleSpeed, decreaseSpeed, increaseSpeed,
     update, triggerImpactFlash, triggerCollisionShake
   };

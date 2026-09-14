@@ -13,11 +13,13 @@ const Input = (() => {
 
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mousedown', onMouseDown);
-    canvas.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mouseup', e => onMouseUp(e));
+  canvas.addEventListener('mouseup', e => onMouseUp(e));
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     canvas.addEventListener('touchstart', onTouchStart, { passive: false });
     canvas.addEventListener('touchmove', onTouchMove, { passive: false });
     canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('keydown', onKeyDown);
   }
 
@@ -39,13 +41,30 @@ const Input = (() => {
       updateSpinFromMouse();
       return;
     }
+    // sarjdayken: mouse'u cue'ya yaklastirmak gucu dusurur (geri alma)
+    if (gameState.phase === 'charging' && gameState.isCharging && gameState.cueBall) {
+      const dx = mouseX - gameState.cueBall.x;
+      const dy = mouseY - gameState.cueBall.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      // 25px icindeyse hizli dusur, uzaksa yavas artis zaten gameloop'ta oluyor
+      // burada sadece geri alma: dist < 60 ise gucu orantisal dusur
+      if (dist < 70) {
+        const targetPower = Math.max(0, (dist - 18) / 180 * Physics.CONFIG.MAX_POWER);
+        if (targetPower < gameState.shotPower - 0.4) {
+          gameState.shotPower = Math.max(targetPower, gameState.shotPower - 1.2);
+        }
+      }
+    }
     updateAim();
   }
 
   function onMouseDown(e) {
     Audio.ensureInit();
     updateMousePos(e.clientX, e.clientY);
+    handlePress(e.button);
+  }
 
+  function handlePress(button) {
     if (gameState.phase === 'menu') {
       handleMenuClick();
       return;
@@ -61,8 +80,7 @@ const Input = (() => {
       return;
     }
 
-    if (e.button === 2) {
-      e.preventDefault();
+    if (button === 2) {
       if (!AI.isEnabled() && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
         spinDragging = true;
         updateSpinFromMouse();
@@ -83,6 +101,11 @@ const Input = (() => {
       spinDragging = false;
       return;
     }
+    // sag tik ile sarj iptal (contextmenu zaten prevent edildi)
+    if (e && e.button === 2 && gameState.phase === 'charging' && gameState.isCharging) {
+      GameFlow.cancelCharging();
+      return;
+    }
     if (gameState.phase === 'charging' && gameState.isCharging) {
       GameFlow.fireShot();
     }
@@ -94,12 +117,35 @@ const Input = (() => {
     const dx = mouseX - cb.x;
     const dy = mouseY - cb.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxR = cb.radius * 2.5;
+    const maxR = cb.radius * 3.2;
 
-    const spinX = Math.max(-1, Math.min(1, dx / maxR));
-    const spinY = Math.max(-1, Math.min(1, dy / maxR));
+    // Deadzone: near-center clicks snap to (0,0) to prevent accidental spin.
+    if (dist < 3) {
+      gameState.spinX = 0;
+      gameState.spinY = 0;
+      return;
+    }
+
+    let spinX = Math.max(-1, Math.min(1, dx / maxR));
+    let spinY = Math.max(-1, Math.min(1, dy / maxR));
+
+    // Snap to the 9 zones: 0, ±0.7, ±1.0 per axis.
+    const SNAP_THRESHOLD = 0.12;
+    const snapTargets = [0, 0.7, 1.0];
+    spinX = snapAxis(spinX, snapTargets, SNAP_THRESHOLD);
+    spinY = snapAxis(spinY, snapTargets, SNAP_THRESHOLD);
+
     gameState.spinX = spinX;
     gameState.spinY = spinY;
+  }
+
+  function snapAxis(v, targets, threshold) {
+    for (const t of targets) {
+      if (Math.abs(Math.abs(v) - t) < threshold) {
+        return v < 0 ? -t : t;
+      }
+    }
+    return v;
   }
 
   function onTouchStart(e) {
@@ -107,6 +153,7 @@ const Input = (() => {
     if (e.touches.length > 0) {
       const touch = e.touches[0];
       updateMousePos(touch.clientX, touch.clientY);
+      Audio.ensureInit();
 
       if (e.touches.length === 2 && !AI.isEnabled() &&
           (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
@@ -115,7 +162,7 @@ const Input = (() => {
         return;
       }
 
-      onMouseDown(e);
+      handlePress(0);
     }
   }
 
@@ -140,7 +187,7 @@ const Input = (() => {
       spinDragging = false;
       return;
     }
-    onMouseUp(e);
+    onMouseUp();
   }
 
   function onKeyDown(e) {
@@ -151,21 +198,65 @@ const Input = (() => {
         Audio.playChalk();
       }
     }
+    if ((e.code === 'KeyR' || e.code === 'KeyC' || e.code === 'KeyH' || e.code === 'KeyG' || e.code === 'KeyZ' || e.code === 'KeyS' || e.code === 'Minus' || e.code === 'Equal') && gameState.phase !== 'menu') {
+      // Firefox "Search for text when you start typing" engeli — oyun tuşları browser'a gitmesin
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (typeof e.stopImmediatePropagation === 'function') {
+      // sadece oyun içindeyken agresif engelle
+      if (['KeyC','KeyH','KeyG','KeyR','KeyZ','KeyS'].includes(e.code) && gameState.phase !== 'menu') {
+        try { e.stopImmediatePropagation(); } catch {}
+      }
+    }
     if (e.code === 'KeyR' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
       if (e.shiftKey) {
         GameFlow.toggleReplay();
       } else if (gameState.isPractice || GameFlow.isChallengeMode()) {
         GameFlow.resetPracticeBalls();
-        GameFlow.showMessage(GameFlow.isChallengeMode() ? I18n.t('challengeReset') : 'Toplar sifirlandi', 1000);
+        GameFlow.showMessage(GameFlow.isChallengeMode() ? I18n.t('challengeReset') : I18n.t('ballsReset'), 1000);
       } else {
         gameState.spinX = 0;
         gameState.spinY = 0;
-        GameFlow.showMessage('Spin reset', 800);
+        GameFlow.showMessage(I18n.t('spinReset'), 800);
       }
     }
     if (e.code === 'KeyG' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
       UI.toggleTrajectoryMode();
-      GameFlow.showMessage(UI.isTrajectoryMode() ? '[G] ROTA ACIK' : '[G] ROTA KAPALI', 1200);
+      GameFlow.showMessage(UI.isTrajectoryMode() ? I18n.t('trajectoryOn') : I18n.t('trajectoryOff'), 1200);
+    }
+    if (e.code === 'Escape' && gameState.phase === 'charging' && gameState.isCharging) {
+      e.preventDefault();
+      e.stopPropagation();
+      GameFlow.cancelCharging();
+      return;
+    }
+    if ((e.code === 'ArrowDown' || e.code === 'ArrowLeft') && gameState.phase === 'charging' && gameState.isCharging) {
+      e.preventDefault();
+      e.stopPropagation();
+      GameFlow.adjustChargingPower(-1.1);
+      return;
+    }
+    if ((e.code === 'ArrowUp' || e.code === 'ArrowRight') && gameState.phase === 'charging' && gameState.isCharging) {
+      e.preventDefault();
+      e.stopPropagation();
+      GameFlow.adjustChargingPower(1.1);
+      return;
+    }
+    if (e.code === 'KeyC' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
+      UI.toggleTrainingMode();
+      GameFlow.showMessage(UI.isTrainingMode() ? I18n.t('trainingOn') : I18n.t('trainingOff'), 1200);
+    }
+    if (e.code === 'KeyH' && UI.isTrainingMode() &&
+        (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
+      const suggested = AI.getSuggestedSpinForAngle(
+        gameState.cueBall, gameState.aimAngle, gameState.balls, gameState.mode
+      );
+      if (suggested) {
+        gameState.spinX = suggested.spinX;
+        gameState.spinY = suggested.spinY;
+        GameFlow.showMessage(I18n.t('suggestionApplied'), 1200);
+      }
     }
     if (e.code === 'KeyZ' && gameState.phase === 'aiming' && !AI.isEnabled()) {
       GameFlow.undoLastShot();
@@ -179,6 +270,16 @@ const Input = (() => {
     if (e.code === 'Equal' && gameState.phase !== 'menu') {
       GameFlow.increaseSpeed();
     }
+  }
+
+
+  function onWheel(e) {
+    if (gameState.phase !== 'charging' || !gameState.isCharging) return;
+    e.preventDefault();
+    // wheel up = guc azalt, wheel down = arttir (dogal); deltaY pozitif = asagi scroll
+    // firefox vs chrome deltaMode farkini normalize et
+    const step = Math.sign(e.deltaY) * 0.9;
+    GameFlow.adjustChargingPower(step);
   }
 
   function updateAim() {
@@ -325,7 +426,7 @@ const Input = (() => {
           Mode3Ball.selectCueBall(gameState, ball.id);
           selectingCueBall = false;
           gameState.phase = 'aiming';
-          GameFlow.showMessage('Selected: ' + ball.id.toUpperCase(), 1500);
+          GameFlow.showMessage(I18n.t('selected', { b: ball.id.toUpperCase() }), 1500);
         }
         return;
       }

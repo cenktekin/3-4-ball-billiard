@@ -36,6 +36,12 @@ const AI = (() => {
     let bestShot = null;
     let bestScore = -Infinity;
 
+    // cushion-first planlaması açıdan bağımsızdır; döngü dışında bir kez hesapla
+    let cushionFirstShot = null;
+    if (mode === '3cushion') {
+      cushionFirstShot = findCushionFirstShot(cue, targets);
+    }
+
     const step = 0.02;
     for (let angle = 0; angle < Math.PI * 2; angle += step) {
       const hit = findFirstBallHit(cue, angle, targets);
@@ -46,11 +52,10 @@ const AI = (() => {
 
       let cushionFirst = mode === '3cushion' && canDoCushionFirst(hit) ? 10 : 0;
 
-      if (mode === '3cushion' && !cushionFirst) {
-        const cfShot = findCushionFirstShot(cue, targets);
-        if (cfShot && cfShot.score > bestScore) {
-          bestScore = cfShot.score;
-          bestShot = cfShot;
+      if (mode === '3cushion' && !cushionFirst && cushionFirstShot) {
+        if (cushionFirstShot.score > bestScore) {
+          bestScore = cushionFirstShot.score;
+          bestShot = cushionFirstShot;
         }
       }
 
@@ -384,7 +389,7 @@ const AI = (() => {
     const dist = Math.sqrt((hitPoint.x - cue.x) ** 2 + (hitPoint.y - cue.y) ** 2);
     const base = dist * 0.07;
     const noise = 1 + (Math.random() - 0.5) * 2 * diff.powerNoise;
-    return Math.min(Math.max(Math.round(base * noise), 4), Physics.MAX_POWER * 0.85);
+    return Math.min(Math.max(Math.round(base * noise), 4), Physics.CONFIG.MAX_POWER * 0.85);
   }
 
   function findClosestBall(cue, targets) {
@@ -438,8 +443,24 @@ const AI = (() => {
 
   function isThinking() { return thinking; }
 
+  // Training mode: given the current aim angle, compute the ideal spin (falso)
+  // for the first ball that would be hit along that direction. Returns
+  // { spinX, spinY } or null if no ball is hit (aiming at cushion/empty).
+  function getSuggestedSpinForAngle(cue, aimAngle, balls, mode) {
+    if (!cue || !cue.active) return null;
+    const cueBallId = cue.id || 'white';
+    const targets = balls.filter(b => b.active && b.id !== cueBallId);
+    if (targets.length === 0) return null;
+
+    const hit = findFirstBallHit(cue, aimAngle, targets);
+    if (!hit) return null;
+
+    return calcSpin(cue, hit, targets, mode);
+  }
+
   return {
     setEnabled, isEnabled, setDifficulty, getDifficulty, getDifficultyLabel,
-    findBestShot, startThinking, update, isThinking
+    findBestShot, startThinking, update, isThinking,
+    getSuggestedSpinForAngle
   };
 })();

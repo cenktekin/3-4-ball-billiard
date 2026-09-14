@@ -15,6 +15,9 @@ const I18n = (() => {
       mode4ball: '4-TOP (DÖRT TOP)',
       mode3ball: '3-TOP (CAROM)',
       mode3cushion: '3-TOP (3-BAND)',
+      mode4ballShort: '4-Top',
+      mode3ballShort: '3-Top (Carom)',
+      mode3cushionShort: '3-Bant',
       practice: 'ANTRENMAN',
       practiceReset: '[PRACTICE] R = Toplari Sifirla',
       
@@ -38,11 +41,17 @@ const I18n = (() => {
       language: 'DIL',
       
       // Gameplay
-      selectCueBall: 'Select your cue ball (White or Yellow)',
-      selected: 'Selected',
-      spinReset: 'Spin reset',
+      selectCueBall: 'Isteka topunu sec (Beyaz veya Sari)',
+      cueBallLabel: 'ISTEKA TOPU',
+      selected: 'Secilen: {b}',
+      spinReset: 'Spin sifirlandi',
       trajectoryOn: '[G] ROTA ACIK',
       trajectoryOff: '[G] ROTA KAPALI',
+      trainingOn: '[C] EGITIM MODU: ACIK',
+      trainingOff: '[C] EGITIM MODU: KAPALI',
+      suggestionApplied: 'Oneri uygulandi (H)',
+      suggestionLabel: 'ONERI:',
+      shotCancelled: 'Vuruş iptal (ESC)',
       replayOn: '[SHIFT+R] REPLAY AKTIF',
       replayOff: '[SHIFT+R] REPLAY KAPALI',
       power: 'GUC',
@@ -92,6 +101,14 @@ const I18n = (() => {
       
       // Impact
       impact: 'CARPMA',
+
+      // Shot guidance (physics-derived)
+      restCue: 'ISTEKA DURUSU',
+      restTarget: 'HEDEF DURUSU',
+      predictedDistance: 'MESAFE: {d}px',
+      cushionCount: 'BANT: {n}',
+      firstContact: 'ILK TEMAS: {ball}',
+      spinMag: 'SPIN: %{pct}',
       
       // Time Attack
       timeAttack: 'ZAMANA KARSI',
@@ -110,6 +127,30 @@ const I18n = (() => {
       challengeNext: 'Sonraki',
       challengePrev: 'Onceki',
       challengeReset: 'Tekrar Dene',
+
+      // Shot results
+      miss: 'MISS!',
+      scoreBoth: 'SAYI! Iki topa da degdi!',
+      score3cushion: 'SAYI! 3 bant + iki top!',
+      noBallHit: 'Hic topa degmedi!',
+      oneBallHit: 'Yalnizca bir topa degdi!',
+      twoBallsMissed: 'Iki topa da degmedi!',
+      cushionsOnly: 'Yalnizca {n}/3 bant!',
+      turnTo: 'Sira → Player {n}',
+      singleBallNoPoints: 'TEK TOP — puan yok!',
+      threeBalls: 'UC TOP!',
+      twoReds: 'IKI KIRMIZI',
+      redAndOpponent: 'KIRMIZI + RAKIP',
+      cushionDouble: ' + BANT x2!',
+      pointsEarned: '+{n} puan',
+
+      // System messages
+      noUndo: 'Geri alinacak vurus yok',
+      undoDone: 'Son vurus geri alindi',
+      simSpeed: 'SIM HIZI: {n}x',
+      replayToggleOn: '[R] REPLAY ACIK',
+      replayToggleOff: '[R] REPLAY KAPALI',
+      ballsReset: 'Toplar sifirlandi',
     },
     
     en: {
@@ -125,6 +166,9 @@ const I18n = (() => {
       mode4ball: '4-BALL (FOUR BALL)',
       mode3ball: '3-BALL (CAROM)',
       mode3cushion: '3-BALL (3-CUSHION)',
+      mode4ballShort: '4-Ball',
+      mode3ballShort: '3-Ball (Carom)',
+      mode3cushionShort: '3-Cushion',
       practice: 'PRACTICE',
       practiceReset: '[PRACTICE] R = Reset Balls',
       
@@ -149,10 +193,16 @@ const I18n = (() => {
       
       // Gameplay
       selectCueBall: 'Select your cue ball (White or Yellow)',
-      selected: 'Selected',
+      cueBallLabel: 'CUE BALL',
+      selected: 'Selected: {b}',
       spinReset: 'Spin reset',
       trajectoryOn: '[G] TRAJECTORY ON',
       trajectoryOff: '[G] TRAJECTORY OFF',
+      trainingOn: '[C] TRAINING: ON',
+      trainingOff: '[C] TRAINING: OFF',
+      suggestionApplied: 'Suggestion applied (H)',
+      suggestionLabel: 'SUGGESTION:',
+      shotCancelled: 'Shot cancelled (ESC)',
       replayOn: '[SHIFT+R] REPLAY ON',
       replayOff: '[SHIFT+R] REPLAY OFF',
       power: 'POWER',
@@ -202,6 +252,14 @@ const I18n = (() => {
       
       // Impact
       impact: 'IMPACT',
+
+      // Shot guidance (physics-derived)
+      restCue: 'CUE REST',
+      restTarget: 'TARGET REST',
+      predictedDistance: 'DISTANCE: {d}px',
+      cushionCount: 'CUSHIONS: {n}',
+      firstContact: 'FIRST CONTACT: {ball}',
+      spinMag: 'SPIN: %{pct}',
       
       // Time Attack
       timeAttack: 'TIME ATTACK',
@@ -220,6 +278,30 @@ const I18n = (() => {
       challengeNext: 'Next',
       challengePrev: 'Previous',
       challengeReset: 'Try Again',
+
+      // Shot results
+      miss: 'MISS!',
+      scoreBoth: 'SCORE! Hit both balls!',
+      score3cushion: 'SCORE! 3 cushions + both balls!',
+      noBallHit: 'No ball hit!',
+      oneBallHit: 'Only one ball hit!',
+      twoBallsMissed: 'Missed both balls!',
+      cushionsOnly: 'Only {n}/3 cushions!',
+      turnTo: 'Turn → Player {n}',
+      singleBallNoPoints: 'SINGLE BALL — no points!',
+      threeBalls: 'THREE BALLS!',
+      twoReds: 'TWO REDS',
+      redAndOpponent: 'RED + OPPONENT',
+      cushionDouble: ' + CUSHION x2!',
+      pointsEarned: '+{n} points',
+
+      // System messages
+      noUndo: 'No shot to undo',
+      undoDone: 'Last shot undone',
+      simSpeed: 'SIM SPEED: {n}x',
+      replayToggleOn: '[R] REPLAY ON',
+      replayToggleOff: '[R] REPLAY OFF',
+      ballsReset: 'Balls reset',
     }
   };
 
