@@ -388,7 +388,7 @@ const GameFlow = (() => {
 
     for (const hit of events.cushionHits) {
       Audio.playCushionHit();
-      gameState.recordCushionHit();
+      gameState.recordCushionHit(hit.id, cueBallId);
       if (gameState.mode === '3cushion') {
         Audio.playCushionCount(gameState.cushionHits);
       }

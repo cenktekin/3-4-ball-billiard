@@ -5,6 +5,8 @@ const Input = (() => {
   let gameState = null;
   let mouseX = 0, mouseY = 0;
   let spinDragging = false;
+  let spinOverride = false;
+  let spinPressX = 0, spinPressY = 0;
   let selectingCueBall = false;
 
   function init(canvasEl, gs) {
@@ -38,6 +40,12 @@ const Input = (() => {
   function onMouseMove(e) {
     updateMousePos(e.clientX, e.clientY);
     if (spinDragging) {
+      if (!spinOverride) {
+        const dx = mouseX - spinPressX;
+        const dy = mouseY - spinPressY;
+        if (dx * dx + dy * dy < 36) return;
+        spinOverride = true;
+      }
       updateSpinFromMouse();
       return;
     }
@@ -81,24 +89,27 @@ const Input = (() => {
     }
 
     if (button === 2) {
-      if (!AI.isEnabled() && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
+      if (!AI.isEnabled() && gameState.phase === 'aiming') {
+        applyBestShot();
         spinDragging = true;
-        updateSpinFromMouse();
+        spinOverride = false;
+        spinPressX = mouseX;
+        spinPressY = mouseY;
       }
       return;
     }
 
     if (gameState.phase === 'aiming' && !AI.isEnabled()) {
       gameState.isCharging = true;
-      gameState.shotPower = 0;
       gameState.phase = 'charging';
-      updateAim();
+      if (gameState.shotPower <= 0) updateAim();
     }
   }
 
   function onMouseUp(e) {
     if (spinDragging) {
       spinDragging = false;
+      spinOverride = false;
       return;
     }
     // sag tik ile sarj iptal (contextmenu zaten prevent edildi)
@@ -158,6 +169,7 @@ const Input = (() => {
       if (e.touches.length === 2 && !AI.isEnabled() &&
           (gameState.phase === 'aiming' || gameState.phase === 'charging')) {
         spinDragging = true;
+        spinOverride = true;
         updateSpinFromMouse();
         return;
       }
@@ -280,6 +292,16 @@ const Input = (() => {
     // firefox vs chrome deltaMode farkini normalize et
     const step = Math.sign(e.deltaY) * 0.9;
     GameFlow.adjustChargingPower(step);
+  }
+
+  function applyBestShot() {
+    const shot = AI.getBestShotHint(gameState);
+    if (!shot) return;
+    gameState.aimAngle = shot.angle;
+    gameState.spinX = shot.spinX || 0;
+    gameState.spinY = shot.spinY || 0;
+    gameState.shotPower = shot.power;
+    GameFlow.showMessage(I18n.t('bestShotApplied'), 1200);
   }
 
   function updateAim() {

@@ -50,6 +50,7 @@ const I18n = (() => {
       trainingOn: '[C] EGITIM MODU: ACIK',
       trainingOff: '[C] EGITIM MODU: KAPALI',
       suggestionApplied: 'Oneri uygulandi (H)',
+      bestShotApplied: 'En iyi vuruş uygulandı (sağ tık)',
       suggestionLabel: 'ONERI:',
       shotCancelled: 'Vuruş iptal (ESC)',
       replayOn: '[SHIFT+R] REPLAY AKTIF',
@@ -93,7 +94,7 @@ const I18n = (() => {
       backLabel: '← GERI',
       
       // Controls hint
-      controls: 'Aim: Mouse  |  Power: Hold Click  |  Spin: Right-Click Drag  |  Chalk: SPACE  |  Undo: Z',
+      controls: 'Aim: Mouse  |  Power: Hold Click  |  Best Shot: Right-Click  |  Falso: Right-Drag  |  Chalk: SPACE  |  Undo: Z',
       
       // Trajectory
       cueTrajectory: 'Beyaz topun rotasi',
@@ -201,6 +202,7 @@ const I18n = (() => {
       trainingOn: '[C] TRAINING: ON',
       trainingOff: '[C] TRAINING: OFF',
       suggestionApplied: 'Suggestion applied (H)',
+      bestShotApplied: 'Best shot applied (right-click)',
       suggestionLabel: 'SUGGESTION:',
       shotCancelled: 'Shot cancelled (ESC)',
       replayOn: '[SHIFT+R] REPLAY ON',
@@ -244,7 +246,7 @@ const I18n = (() => {
       backLabel: '← BACK',
       
       // Controls hint
-      controls: 'Aim: Mouse  |  Power: Hold Click  |  Spin: Right-Click Drag  |  Chalk: SPACE  |  Undo: Z',
+      controls: 'Aim: Mouse  |  Power: Hold Click  |  Best Shot: Right-Click  |  Falso: Right-Drag  |  Chalk: SPACE  |  Undo: Z',
       
       // Trajectory
       cueTrajectory: 'Cue ball trajectory',

@@ -52,7 +52,7 @@ Tarayıcıda `http://localhost:8000` adresine gidin.
 |-----|---------|
 | **Fare** | Nişan al |
 | **Sol Tık** | Vuruş yap |
-| **Sağ Tık** | Spin ayarla |
+| **Sağ Tık** | En iyi vuruşu uygula (açı + falso + hız); sağ tık + sürükle = falso ayarla |
 | **Space** | Tebeşir (chalk) |
 | **R** | Topları sıfırla / Spin sıfırla (Shift+R = replay) |
 | **G** | Yörünge tahmini aç/kapat |

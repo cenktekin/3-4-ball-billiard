@@ -79,8 +79,8 @@ const GameState = (() => {
       }
     }
 
-    recordCushionHit() {
-      if (this.turnActive) {
+    recordCushionHit(ballId, cueBallId) {
+      if (this.turnActive && ballId === cueBallId) {
         this.cushionHits++;
       }
     }

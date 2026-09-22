@@ -23,7 +23,7 @@ const AI = (() => {
     return labels[difficulty] || 'ORTA';
   }
 
-  function findBestShot(gameState) {
+  function findBestShot(gameState, diffOverride) {
     const cue = gameState.cueBall;
     if (!cue || !cue.active) return null;
 
@@ -32,7 +32,7 @@ const AI = (() => {
     if (targets.length === 0) return null;
 
     const mode = gameState.mode;
-    const diff = DIFFICULTY[difficulty];
+    const diff = diffOverride || DIFFICULTY[difficulty];
     let bestShot = null;
     let bestScore = -Infinity;
 
@@ -458,9 +458,15 @@ const AI = (() => {
     return calcSpin(cue, hit, targets, mode);
   }
 
+  function getBestShotHint(gameState) {
+    return findBestShot(gameState, {
+      thinkDelay: 0, noise: 0, powerNoise: 0, useSpin: true, cushionBonus: 1
+    });
+  }
+
   return {
     setEnabled, isEnabled, setDifficulty, getDifficulty, getDifficultyLabel,
     findBestShot, startThinking, update, isThinking,
-    getSuggestedSpinForAngle
+    getSuggestedSpinForAngle, getBestShotHint
   };
 })();
