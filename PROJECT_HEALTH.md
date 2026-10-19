@@ -1,13 +1,13 @@
 # PROJECT_HEALTH.md — 3-4-ball-billiard
 
-## Sağlık Puanı: 96/100 🟢
+## Sağlık Puanı: 79/100 🟡
 
 ### Güçlü Yanlar
-- **Saf JS mimarisi** — Framework bağımlılığı yok, 18+3 modüler JS dosyasına ayrılmış (ui.js, ui-effects.js, ui-menus.js ayrıldı)
+- **Saf JS mimarisi** — Framework bağımlılığı yok, 18+4 modüler JS dosyasına ayrılmış (ui.js, ui-effects.js, ui-menus.js ayrıldı)
 - **Fizik motoru** — P1–P7'de iyileştirildi: **dt-scaled friction** (rollingFriction × substep dt), **fixed-timestep 240Hz alt-adımlı simülasyon** (framerate-independent), 24 ayarlanabilir sabit (`Physics.CONFIG`), paylaşımlı `runWorldToRest()` integratörü
-- **Unit testler** — `tests/physics.test.cjs` (79 test), `tests/ai.test.cjs` (99 test), `tests/ui-guidance.test.cjs` (27 test) — **205/205 PASS** (3 suite, deterministik, byte-identical ×2)
+- **Unit testler** — `tests/physics.test.cjs` (79 test), `tests/ai.test.cjs` (99 test), `tests/ui-guidance.test.cjs` (27 test), `tests/cushion-count.test.cjs` (9 test) — **214/214 PASS** (4 suite, deterministik, byte-identical ×2)
 - **3 oyun modu** — 3-Ball, 3-Cushion, 4-Ball — farklı kurallar ve skorlama
-- **AI rakip** — `ai.js` (451 satır) ile yapay zeka rakibi, 3 zorluk seviyesi, fizik ile uyumlu (sign convention, parity)
+- **AI rakip** — `ai.js` (400 satır) ile yapay zeka rakibi, 3 zorluk seviyesi, fizik ile uyumlu (sign convention, parity)
 - **i18n** — TR/EN tam destek, 6 yeni UI anahtarı (restCue, restTarget, predictedDistance, cushionCount, firstContact, spinMag)
 - **Deploy** — GitHub Pages üzerinde canlı, statik HTML ile zero-config
 - **İleri özellikler** — Spin kontrolü, vuruş göstergesi, yörünge tahmini (cache'li), dönüş oku, ses efektleri, konfeti, screen shake, **fizik tabanlı aiming UI** (rest marker'lar, HUD, spin magnitude)
@@ -18,9 +18,9 @@
 
 | Risk | Seviye | Detay |
 |------|--------|-------|
-| `ui-menus.js` büyük | 🟡 Orta | 606 satır — menü çizimleri + buton getter'ları tek dosyada (i18n bağlandı) |
-| `ui.js` büyük | 🟡 Orta | 889 satır — nişan/power/stick çizimleri + HUD + fizik tabanlı guidance |
-| `gameloop.js` büyük | 🟡 Orta | 543 satır — state machine + game loop |
+| `ui-menus.js` büyük | 🟡 Orta | 527 satır — menü çizimleri + buton getter'ları tek dosyada (i18n bağlandı) |
+| `ui.js` büyük | 🟡 Orta | 880 satır — nişan/power/stick çizimleri + HUD + fizik tabanlı guidance |
+| `gameloop.js` büyük | 🟡 Orta | 513 satır — state machine + game loop |
 | E2E test yok | 🟢 Düşük | Fizik unit testleri mevcut; tarayıcı içi akış testi yok |
 
 ### Çözülen Riskler (son bakım)
@@ -30,17 +30,18 @@
 - ~~Test yok~~ → `tests/physics.test.cjs` eklendi, **24/24 PASS → 79/0** (Todo 2-3-4)
 - ~~AI test yok~~ → `tests/ai.test.cjs` eklendi, **99/0** (Todo 5)
 - ~~UI guidance contract test yok~~ → `tests/ui-guidance.test.cjs` eklendi, **27/0** (Todo 6)
+- ~~3-bant modunda rakip topların bant teması sayılıyordu~~ → `tests/cushion-count.test.cjs` eklendi, sadece isteka topu sayılıyor, **9/0** (`85998d6`)
 - ~~İstatistik ekranı hardcoded metin~~ → tüm menü/istatistik/efekt metinleri I18n anahtarlarına bağlandı
 
 ### Detaylar
 
-- **Toplam JS**: ~5,300 satır (21 dosya: physics, ball, table, audio, stats, i18n, ui, ui-effects, ui-menus, game, mode4ball, mode3ball, challenge, ai, gameloop, renderer, input, main + 3 test)
+- **Toplam JS**: ~5,700 satır (22 dosya: physics, ball, table, audio, stats, i18n, ui, ui-effects, ui-menus, game, mode4ball, mode3ball, challenge, ai, gameloop, renderer, input, main + 4 test)
 - **CSS**: 1 dosya (`styles.css`) — responsive eklendi
-- **Büyük dosyalar**: `ui.js` (889), `ui-menus.js` (606), `gameloop.js` (543), `ai.js` (451), `physics.js` (465), `input.js` (348)
-- **Testler**: 3 test dosyası, 205 toplam assertion, `node tests/*.test.cjs` ile çalışır
+- **Büyük dosyalar** (boş satır hariç): `ui.js` (880), `ui-menus.js` (527), `gameloop.js` (513), `physics.js` (445), `input.js` (422), `ai.js` (400)
+- **Testler**: 4 test dosyası, 214 toplam assertion, `node tests/*.test.cjs` ile çalışır
 - **README**: ✅ Güncellenmiş (fizik sözleşmesi, test komutları, responsive)
 - **Lisans**: MIT
-- **Son değişiklik**: P7 — responsive canvas + physics-derived UI guidance
+- **Son değişiklik**: `85998d6` — 3-bant sayacı düzeltmesi (sadece isteka topu) + cushion-count testi
 
 ### Fizik Sözleşmesi (v7)
 

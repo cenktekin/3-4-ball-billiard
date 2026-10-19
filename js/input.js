@@ -218,7 +218,7 @@ const Input = (() => {
     if (typeof e.stopImmediatePropagation === 'function') {
       // sadece oyun içindeyken agresif engelle
       if (['KeyC','KeyH','KeyG','KeyR','KeyZ','KeyS'].includes(e.code) && gameState.phase !== 'menu') {
-        try { e.stopImmediatePropagation(); } catch {}
+        try { e.stopImmediatePropagation(); } catch (err) { console.warn('stopImmediatePropagation failed', err); }
       }
     }
     if (e.code === 'KeyR' && (gameState.phase === 'aiming' || gameState.phase === 'charging')) {

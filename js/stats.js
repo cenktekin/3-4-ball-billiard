@@ -44,7 +44,7 @@ const Stats = (() => {
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {} // eslint-disable-line
+    } catch (e) { console.warn('stats save failed', e); }
   }
 
   function recordGame(mode, won, score, p1Score, p2Score) {

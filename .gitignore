@@ -38,3 +38,12 @@ build/
 credentials.json
 service-account*.json
 .omo/
+
+# Tool artifacts
+.commandcode/
+
+# Joplin exports (kanonik kaynak Joplin)
+📄*.md
+📝*.md
+🧠*.md
+3-4-ball-billiard - *.md

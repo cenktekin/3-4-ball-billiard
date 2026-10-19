@@ -71,7 +71,8 @@ Tarayıcıda `http://localhost:8000` adresine gidin.
 ├── tests/
 │   ├── physics.test.cjs # Fizik motoru unit testleri (79 assertion)
 │   ├── ai.test.cjs      # AI davranış testleri (99 assertion)
-│   └── ui-guidance.test.cjs # UI guidance contract testleri (27 assertion)
+│   ├── ui-guidance.test.cjs # UI guidance contract testleri (27 assertion)
+│   └── cushion-count.test.cjs # 3-bant sayacı regresyon testi (9 assertion)
 ├── archive/            # Eski fix_physics*.cjs kalıntıları
 └── js/
     ├── physics.js      # Fizik motoru (Physics.CONFIG: 24 sabit, roll/drag/friction, dt-scaled integration)
@@ -105,12 +106,13 @@ Tarayıcıda `http://localhost:8000` adresine gidin.
 ## 🧪 Testler
 
 ```bash
-node tests/physics.test.cjs    # 79 assertions
-node tests/ai.test.cjs          # 99 assertions
-node tests/ui-guidance.test.cjs # 27 assertions
+node tests/physics.test.cjs       # 79 assertions
+node tests/ai.test.cjs            # 99 assertions
+node tests/ui-guidance.test.cjs   # 27 assertions
+node tests/cushion-count.test.cjs # 9 assertions
 ```
 
-Toplam: **205 assertion** (3 test dosyası).
+Toplam: **214 assertion** (4 test dosyası).
 
 ## 📄 Lisans
 
