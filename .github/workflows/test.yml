@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Physics tests
+        run: node tests/physics.test.cjs
+
+      - name: AI tests
+        run: node tests/ai.test.cjs
+
+      - name: UI guidance tests
+        run: node tests/ui-guidance.test.cjs
+
+      - name: Cushion count tests
+        run: node tests/cushion-count.test.cjs
