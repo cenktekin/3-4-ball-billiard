@@ -23,10 +23,13 @@
 |---|-------|-------|
 | 1 | Push `85998d6` (cushion fix) | ✅ push edildi |
 | 2 | `PROJECT_HEALTH.md` güncelle | ✅ 214/214 assertion, "18+4" dosya, 4 test suite, satır sayıları boş-satır-hariç, sağlık 79/100, cushion-count riski kapandı |
-| 3 | CI workflow ekle | ⏳ `.github/workflows/test.yml` hazır ama **push edilemedi** — OAuth token'da `workflow` scope yok; web UI'dan eklenmeli |
+| 3 | CI workflow ekle | ✅ `.github/workflows/test.yml` push edildi (`2e8d20e`) — run `39372913909` **success**, 4 suite 214 assertion |
 | 4 | Boş `catch {}` düzelt | ✅ `js/input.js:221` + `js/stats.js:47` → `console.warn` |
 | 5 | `README.md` test bölümü | ✅ 4 suite / 214 assertion + proje ağacı |
 | 6 | Kök gürültüsü temizle | ✅ `.commandcode/` + Joplin export `.md` → `.gitignore`; `NEXT_ACTIONS.md` takibe alındı |
+
+> **Push notu:** `.github/workflows/*` push'u OAuth `workflow` scope ister. GCM token'ı bunu taşımıyorsa:
+> `git -c credential.helper= -c credential.helper="!gh auth git-credential" push origin main` (önce `gh auth refresh -s workflow`).
 
 ## ⏸️ ERTELENEN (uzun vade, ayrı oturum)
 
